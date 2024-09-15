@@ -16,7 +16,9 @@ This repo uses nix flakes.
 $tree -L 1
 .
 ├── bin           # helpers
-├── docs
+├── adrs          # Architectural Decision Records
+├── design        # Sepcs and material related to the design of the protocol
+├── meeting-notes # Memos recording meetings, particularly decisions and actionables
 ├── flake.lock
 ├── flake.nix
 └── README.md
