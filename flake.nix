@@ -8,6 +8,7 @@
     git-hooks-nix.inputs.nixpkgs.follows = "nixpkgs";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
+    aiken.url = "github:aiken-lang/aiken/v1.1.4";
   };
 
   outputs = inputs @ {flake-parts, ...}:
@@ -53,7 +54,8 @@
           name = "cardano-lightning";
           # Let's keep this "path discovery techinque" here for refernece:
           # (builtins.trace (builtins.attrNames inputs.cardano-addresses.packages.${system}) inputs.cardano-cli.packages)
-          packages = with pkgs; [
+          packages = [
+            inputs'.aiken.packages.aiken
           ];
         };
       };
