@@ -9,141 +9,107 @@ author:
 
 ### Scope
 
-> Key points:
->
-> - We will use libp2p so `ping` will be provided out of the box and we don't
->   cover that part.
-> - Transport layer with encryption will be covered by separate spec but we will
->   relay on standard libp2p capabilities.
->   - We assume that transport layer is reliable and delivers messages in order.
-
 This document covers the communication protocol between two peers - CL nodes
 which wish to establish and manage lightning channels between each other. It
 defines messages and exchange flows required to achieve this task. We loosely
-follow and cover the scope of the BLN
+follow and cover the scope of the related BLN specs
 [bolt#0](https://github.com/Lighting/bolts/blob/master/00-introduction.md)
-[bolt#1](https://github.com/Lighting/bolts/blob/master/01-messaging.md) and
-[bolt#2](https://github.com/lightning/bolts/blob/master/02-peer-protocol.md) in
-this document. Please note that we miss interactive transaction building because
-any multi-sig based stepping (like dual funding) is out of scope for this
-version of he protocol even though it will be supported by the L1 validator.
+[bolt#1](https://github.com/lighting/bolts/blob/master/01-messaging.md) and
+[bolt#2](https://github.com/lightning/bolts/blob/master/02-peer-protocol.md)
+Please note that we omit interactive transaction building, as any multisig based
+steps (like dual funding) are out of scope for this version of the protocol,
+even though they will be supported by the L1 validator.
 
-The node authentication, transport layer specification is out of the scope of
-this document though. In few places we will assume that we will some compents
-form `libp2p` but choice of that lib will be discussed separately.
+The node authentication and the transport layer specification is out of the
+scope of this document. However, we will assume in one instance that
+[`libp2p`](https://libp2p.io) will be part of our tech stack.
 
-We also require that the protocol used for transport layer delivers messages
-reliably or fails and that the messages are delivered in order. The last
+We require that the transport layer protocol either delivers messages reliably
+or fails, and we assume that the messages are delivered in order. This last
 assumption can be removed in the future versions of the protocol but for now it
-allows us to use more straightforward message handling and failure recovery.
+allows us to use more straightforward message handling and skip a few failure
+recovery scenarios.
 
 ### Signposting
 
-- For gentler intro to CL, check out the
+- For a gentler intro to CL, check out the
   [blog](https://cardano-lightning.org/blog) and the
   [minimal lifecycle ADR](../ards/minimal-lifecycle.md) for a general
-  introduction lifecycle of the channel.
+  introduction to the channel lifecycle.
 - For terms, see the [glossary](../glossary.md)
 - For explanations on how to read this spec, see the appendix.
 
 ### Formats Used
 
-> Key points:
->
-> - We use protobuf for message serialization.
-> - We use CBOR for some payloads like `cheque` and `snapshot`.
-> - We use pseudo-code to describe the messages in this phase.
-
 We decided to use [Protocol Buffers](https://protobuf.dev/) for the message
-serialization. Currently the spec uses pseudo code (similar to
-PureScript/Haskell) for the message definitions as they are easier to read. The
-final protobuf definitions will be provided in a seapate document.
+serialization. Currently the spec uses pseudocode (in Haskell) PureScript) for
+the message definitions because it should easier to read. The final protobuf
+definitions will be provided in a separate document. We describe many invariants
+using indicative types or aliases (like `Positive`, `Natural` but also
+`Milliseconds`, `POSIX` etc.) in the pseudo code so we can avoid repeating most
+of them in the text.
 
-Some parts of the protocol require signatures under CBOR encoded structures
-(`cheque`, `snapshot` etc.) which are not directly exchanged between peers but
-rather reconstructed on both sides. We use specifically CBOR not only because it
-suites that purpose well but also because Cardano L1 uses that format. These
-payloads will be specified separately.
+### Signed Structures (`CBOR` encoded)
+
+Some parts of the protocol require signatures under `CBOR` encoded structures
+(`Cheque` and `Snapshot`) which are not directly exchanged between peers but
+rather reconstructed on the both sides. We specifically use `CBOR` not only
+because it suits our purpose well but also because Cardano L1 uses that format
+natively. These payloads will be specified separately.
 
 ## Design
 
 ### Overview
 
-> Key points:
->
-> - Channel partners need a way to efficiently and securely communicate (but
->   security is out of scope).
-> - Implementators need a protocol which is clear and easy to follow and debug.
-> - Efficency is important especially in the high throughput context
->   (hub<->hub).
-> - This is an initial version of the protocol so we want to keep an eye on the
->   efficiency but favor simplicity and ease of resoning and debugging.
+The CL nodes need a way to efficiently communicate in order to initiate and
+manage the channels. We don't want to trade simplicity and ease of debugging for
+efficiency, though. That is why we do not hesitate to introduce regular
+request-response flows in many of the protocol conversations. This choice should
+reduce the requirement for retransmissions, simplify error handling, and also
+make reasoning about the shared channel state much easier.
 
-### Message Types and Protocol Phases
+### Message Types
 
-> Key points:
->
-> - We can distinguish two types of messages and phases:
->   - Global level and possibly channel independent conversations which relate
->     to handshaking and connection maintainance.
->   - Channels management:
->     - The rest of the messages are multiplexed by channel.
->     - Channel management phases: Establishing, Operating, Retiring
+We can identify distinct groups of messages:
+
+- Global-level and possibly channel-independent conversations, which include
+  initial handshaking, connection maintenance, and top level error reporting and
+  logging.
+
+- Channel-level communication, which is multiplexed by `channelId`, includes all
+  the messages related to the channel lifecycle.
 
 ### Message Interaction Patterns
 
-> Key points:
->
-> - Protocol uses hybrid communication model.
-> - Fully synchronous and turn based flows involving longer conversations:
->   - handshake
->   - channel establishment
->   - any future conversation which require quiecence:
->     - possibly `dual-close` permission issuing
->     - possibly `sub` permission issuing
-> - Asynchrous and pipelined messaging with aknowledgments.
->   - normal/locked cheque issuence
->   - htlc fullfilment/timeout
->   - htlc cancelation
->   - Snapshot signing
+The protocol uses a hybrid communication model. The initial handshake and
+channel establishment are fully synchronous and follow a predetermined set of
+messages. The channel operations are asynchronous and pipelined. All the
+channel-related messages are multiplexed using the `channelId`. All the
+asynchronous conversations are tagged by `conversationId`.
 
-task and can use some predefined messages found in this library like
-[`Ping`](https://docs.libp2p.io/concepts/introduction/protocols/ping/).
-
-Each peer connection MUST use a single, shared link for all channel messages,
-with messages distinguished by their channel IDs.
-
-## The Protocol
-
-### Handshaking and Connection Maintainance
-
-### Channel Lifecycle
-
-#### Establishing
-
-#### Operating
-
-#### Retiring
+By design, we avoid synchronization points which would require both parties to
+block the regular channel operations. We have successfully avoided them in the
+current version and believe we have preserved ease of reasoning at the same
+time.
 
 ## The Protocol
 
 We assume that the secure communication channel is already established between
-two peers and that authentication of the partners nodes is done already. We also
-assume that there is a way to identify the connection initiator either through
-the transport layer or through separate election mechanism (pub key ordering
-etc.). We use that knowledge to assing the `initiator` and `non-initiator` roles
-per connection. Peers recognize these roles and keep them during the whole
-connection lifecycle.
+two peers and that authentication of the partners nodes has already been done.
+We also assume that there is a way to identify the connection initiator either
+through the transport layer or through a separate election mechanism. Using that
+knowledge, we assign the `initiator` and `non-initiator` roles per connection.
+Peers recognize these roles and keep them during the whole connection lifecycle.
 
-### Error Reporting and Connection Manangement
+### Error Reporting and Connection Management
 
-As stated above most of the communication is multiplexed by channel there are
-though few messages which can be exchanged on the global level through the
-liftetime of the session.
+As stated above, most of the communication is multiplexed by channel. There are
+a few messages which can be exchanged on the global level through the lifetime
+of the session.
 
 #### `Warning`
 
-For global level or channel level non critical problem reporting a node can send
+For global-level or channel-level non-critical problem reporting a node can send
 a `Warning` message.
 
 ```haskell
@@ -155,8 +121,7 @@ data Warning = Warning
 
 The sending node:
 
-- SHOULD include `channelId` if the problem is related to a specific channel.
-- MAY continue operation after sending `Warning`or MAY close the connection and
+- MAY continue operation after sending `Warning` or MAY close the connection and
   stop responding to the peer.
 
 The receiving node:
@@ -166,11 +131,10 @@ The receiving node:
 
 #### `Error`
 
-For global level error handling which should indicate that there is a critical
-problem (invalid signatures, state inconsistencies, violation of negotiated
-terms) we want to follow pretty restrictive approach taken by BLN and fail the
-channel(s). To express such a criticial missbehaviour the `Error` message is
-used.
+For critical error reporting either on the global-level or on the channel-level
+(invalid signatures, state inconsistencies, violation of negotiated terms) we
+reuse the same `Error` message type. We want to follow pretty restrictive
+approach taken by BLN and fail the channel(s).
 
 ```haskell
 data Error = Error
@@ -180,32 +144,22 @@ data Error = Error
 
 ```
 
-The sending node:
-
-- SHOULD send `Error` for protocol violations or internal errors that make
-  channels unusable.
-- MAY include `channelId` if the problem is related to a specific channel.
-- MAY send `Error` with empty `channelId` with in reply to messages related to
-  unknown channels.
-
-The receiving node:
-
-- MUST fail the channel with the provided `channelId` if it exists.
-- MUST fail all channels with the sending node if `channelId` is not provided.
-
-#### More Precise Error Handling
-
-Beside the above generic failure reporting mechaisms the protocol contains
-context specific responses which can be useful for automatic recovery.
+`Error` message is currently used in many places to close some negotiation step
+as it suites that purpose well - in those scenarios we want to report and finish
+the channel related exchange. On the other hand in many other places we use
+`Success`/`Failure` responses to acknowledge the message reception and to report
+non-fatal errors which are somehow expected. These two messages will be
+introduced in the following sections.
 
 #### `Ping`
 
 To allow for a long-lived TCP connections and to detect unresponsive peers,
-nodes can send ping messages. In this version we opt to use the `libp2p` builtin
-protocol for that: https://docs.libp2p.io/concepts/introduction/protocols/ping/
+nodes can send ping messages. In this version, we opt to use the `libp2p`
+builtin protocol for that:
+[https://docs.libp2p.io/concepts/introduction/protocols/ping/]
 
-This particular protocol can not be used for traffic obfuscation as it has
-constant size messages. We can revisit that decision in the future.
+This particular protocol cannot be used for traffic obfuscation as it has
+constant-size messages. We can revisit that decision in the future.
 
 ### Handshaking
 
@@ -214,6 +168,29 @@ constant size messages. We can revisit that decision in the future.
 Once a connection is established, both peers MUST send an `Init` message before
 any other messages. This is the first message revealing the features supported
 by the sending node.
+
+A node:
+
+- MUST send `Init` as the first message for any connection.
+- MUST wait to receive `Init` before sending any other messages.
+- SHOULD close the connection with an `Error` if the peer doesn't support the
+  possible version, required features or network.
+
+##### The Full Conversation
+
+```mermaid
+ sequenceDiagram
+  participant opener
+  participant non-opener
+
+  par
+    opener ->> non-opener: Init
+  and
+    non-opener ->> opener: Init
+  end
+```
+
+##### The Messages
 
 ```haskell
 type TestnetMagic = Integer
@@ -238,101 +215,26 @@ data Init = Init
     }
 ```
 
-> QUESTION: Banning:
->
-> - Every node have full right to ban anyone.
-> - Should we allow polite banning with an Error.
-> - For sure we should allow even before the handshake to minimize resource
->   consumption.
-
-A node:
-
-- MUST send `Init` as the first message for any connection.
-- MUST wait to receive `Init` before sending any other messages.
-- SHOULD reject if the peer doesn't support the possible version, required
-  features or network by closing he connection after sending a `Warning`.
-
-### Channel Lifecycle
-
-> Key points:
->
-> - As it was already stated all the channel specific messages are tagged by the
->   `channelId` from the beginning.
-> - The channel lifecycle is divided into three phases: establishing, operating
->   and retiring.
-
-```haskell
--- 32 bytes of some hash plus extra payload
-data ChannelId = TokenName
-
-type ChannelMessage msg = (ChannelId, m)
-```
-
-## Core Types
-
-These are core types used in different places of the protocol:
-
-```haskell
-type Positive = Integer -- Positive integer
-type Natural = Integer  -- Positive integer including 0
-type Index = Natural
-
-type Blake2b256Hash = ByteString
-
-type Amount = Natural
-
-type Milliseconds = Natural
-
-type POSIX = Milliseconds
-
-type TxId = Blake2b256Hash
-
-type TxOutRef = (TxId, Integer)
-
-type Ed25519PubKey = ByteString
-
--- 64 bytes of Ed25519 signature
-type Signature = ByteString
-
-type Exclude = [Index]
-
-type Squash = (Amount, Index, Exclude)
-
-type Snapshot = (Squash, Squash)
-
-```
-
-### Establishing
+### Channel Lifecycle: Establishing
 
 #### Overview
 
-> QUESTION(paluh): should we change how we derive chnannelId:
->
-> - We can use txOutRef+arbitrary 32 bit integer
-> - These ids should be assigned in an increasing order.
-> - This should add more flexibility to a concurrent channel negotiation -
->   indexes could be assigned in order but remain valid even if some of the
->   channels were not established.
+The main purpose of this phase is to minimize the probability of the failure and
+possibly exchange fresh keys which should be used in the opening channel.
 
-This phase consists of a single conversation with some optional parts. The
-message exchange is strictly turn based and sequential. We distinguish the
-`opener` and `non-opener` roles in the conversation.
+This phase consists of few sections but it is really a single conversation with
+an optional terms discovery part. The message exchange is strictly turn based
+and sequential. We distinguish the `opener` and `non-opener` roles in the
+conversation.
 
-The messages does not include any exra conversation `id` beside the regular
-`channelId`. Before the beginning the openner should create new `channelId`
-which requires a commiting to specific a utxo. Please check
-[channel id ADR](../adrs/channel-id.md) for more details how the `channelId`
-should be derived and its structure.
+#### Terms Discovery
 
-> Key points:
->
-> - we have a few parts of that phase: optional term discovery, channel opening
->   with its setup negotiation and the final staging of the channel on-chain.
-> - up until the beginning of settlement both partners on disconnection MUST
->   drop the channel.
-> - every error drops the channel and closes that message thread.
+To simplify the opening process nodes expose terms discovery endpoint. Accepted
+values can change over time so they MAY be rediscovered during every new opening
+to minimize failure ratio. We propose this mechanism to simplify the error
+reporting and handling during the opening phase.
 
-#### The Full Conversation
+##### The Full Conversation
 
 ```mermaid
  sequenceDiagram
@@ -341,29 +243,18 @@ should be derived and its structure.
 
   opt Terms Discovery
     opener ->> non-opener: QueryTerms
-    non-opener ->> opener: Terms | QueryError
+    non-opener ->> opener: Terms
   end
-  opener ->> non-opener: Open | Error
-  non-opener ->> opener: Accept | Error
-  opener ->> non-opener: Staging
-  opener ->> non-opener: ChannelStaged | Error
-  non-opener ->> opener: ChannelStaged | Error
 ```
 
-#### Terms Discovery
-
-To simplify the opening process there is an optional terms discovery. Accepted
-parameter ranges can change over time so they should be rediscovered during
-every new opening. We propose this mechanism to simplify the error reporting and
-handling.
+##### The Messages
 
 ```haskell
--- An inclusive range
-data Range a
-  = Range
-    { minValue :: a
-    , maxValue :: a
-    }
+type Positive = Integer -- Positive integer
+type Natural = Integer  -- Positive integer including 0
+type Amount = Natural
+type Markdown = Text
+type Milliseconds = Natural
 
 data QueryTerms
   = QueryTerms
@@ -373,135 +264,405 @@ data QueryTerms
 data Terms
   = Terms
     { currency :: Currency
-    , htlcCountRange :: Range Integer
-    , htlcAmountRange :: Range Amount
-    , totalHtlcAmountRange :: Range Amount
-    , minGiftAmount :: Amount                -- Minimum "service fee" required
-    , minGiftPercent :: Integer              -- Used above the `minGiftAmount`
-    , peerFundingRange :: Range Amount       -- Minimum funding required from peer
-    , respondPeriodRange :: Range Milliseconds
-    , termsAndConditions :: Maybe Text
+    , maxHtlcCount :: Natural
+    -- ^ Maximum number of HTCL (below the protocol limit)
+    , maxHtlcAmount :: Amount
+    , maxTotalHtlcAmount :: Amount
+    , minPeerFunding :: Amount
+    -- ^ Minimum funding required from peer
+    , minGiftAmount :: Amount
+    -- ^ Minimum "service fee" required
+    , minGiftBasisPoints :: Natural
+    -- ^ Used above the `minGiftAmount`. 1bp=0.01%
+    , minRespondPeriod :: Milliseconds
+    -- ^ Mimal delta before `elapse` can be performed after `close`
+    , payoutTimeoutDelta :: Milliseconds
+    -- ^ Used during HTLC cancelation in the payback cheque
+    , termsAndConditions :: Maybe Markdown
     }
 
-data QueryError
-  = QueryError
-      { supportedCurrencies :: [(Currency, Text)]
-      }
+newtype QueryError =
+  QueryError
+    { supportedCurrencies :: [Currency]
+    }
 ```
 
-This mechanism have obvious limitations:
+The above mechanism have many limitations. It is impossible to encode on the
+`Terms` level any dependency between the parameters - for example
+`minResponsePeriod` could depend on the amount of funds locked in a channel.
+Given that limitations and dynamic nature of the terms themselves the `opener`
+SHOULD expect that even for an opening proposition which fulfils per field
+requirements can still be rejected. More involved policies can use
+`termsAndConditions` field to provide more human readable informations.
 
-- Provided ranges can have internal dependencies - for example `responsePeriod`
-  can depend on the funds locked in a channel so even though the `opener` can
-  provide the final channel proposition which fullfiles per field requirements
-  it can still be rejected by the counterparty. More involved policies can use
-  `termsAndConditions` field to explain the details for the user.
-- The list is not exhaustive - it can be extended in the future.
+#### Opening
 
-#### Opening and Staging
+Starting from this part of the `Establishing` phase all the messages should
+include the `channelId` value. Before the beginning the `opener` should create a
+new `channelId` which requires a committing to a specific utxo under the hood.
+Please check [channelId ADR](../adrs/channel-id.md) for more details how the
+`channelId` should be derived and its structure.
 
-> QUESTION:
->
-> - Shoudl we expand the failure scenarios - transaction can timeout etc.?
-> - Should we discuss the transaction validity interval and in the future fee
->   bumping etc.?
+```haskell
+data ChannelId = TokenName
+-- ^ 20 bytes of some hash plus extra metadata - 32 bytes in total
+
+type ChannelMessage msg = (ChannelId, m)
+```
 
 The opening consists of a simple negotiation where the `openner` proposes the
 channel parameters and the `non-opener` accepts them with possible adjustments.
-Then the `opener` finally confirms the channel by sending a signed transaction
-which can be submitted by both parties. After this step both parties should
-confirm about the channel creation and start the operation or report an error
-and drop the channel.
+Then the `opener` either responds with a `Staging` message which acknowledges
+the final channel parameters or fails the channel.
+
+Both parties can generate dedicated verification key for the channel or reuse
+the old ones.
+
+##### The Full Conversation
+
+```mermaid
+ sequenceDiagram
+  participant opener
+  participant non-opener
+
+  opener ->> non-opener: Open
+  non-opener ->> opener: Accept
+  opener ->> non-opener: Staging
+
+  opener ->> non-opener: Staged
+  non-opener ->> opener: Staged
+```
+
+##### The Messages
 
 ```haskell
+-- 32 bytes of Ed25519 public key
+type VerificationKey = ByteString
+
 data Open
   = Open
     { currency :: Currency
     , fundingAmount :: Amount
     , giftAmount :: Amount
     , respondPeriod :: Milliseconds
-    , minimumDepth :: Integer
-    , minHtlcAmount :: Amount
-    , maxHtlcAmount :: Range Amount
-    , maxTotalHtlcAmount :: Range Amount
-    , maxHtlcCount :: Integer
-    , pubKey :: Ed25519PubKey
+    , minimumDepth :: Positive
+    , maxHtlcAmount :: Amount
+    , maxTotalHtlcAmount :: Amount
+    , maxHtlcCount :: Positive
+    , verificationKey :: VerificationKey
     }
 
 data Accept
   = Accept
     { respondPeriod :: Milliseconds
-    , minimumDepth :: Integer
+    , minimumDepth :: Positive
     , minHtlcAmount :: Amount
     , maxHtlcAmount :: Amount
     , maxTotalHtlcAmount :: Amount
-    , maxHtlcCount :: Integer
-    , pubKey :: Ed25519PubKey
+    , maxHtlcCount :: Positive
+    , verificationKey :: VerificationKey
     }
-
-type Cbor = ByteString
-
-type Transaction = Cbor
-
-data ChannelStaging
-  = ChannelStaging
-    { tx :: Transaction
-    }
-
-data ChannelStaged = ChannelStaged
 ```
 
-### Operating
+#### Staging
 
-During this phase all the messages in the current version of the protocol are
-exchanged in a fully asynchronous and pipelined manner. We tag all the
-conversation with unique identifier which is repeated across the conversation.
-Both parties keep an indpendent sequence number which is used for an `id`. To
-avoid collisions `opener` uses even numbers and `non-opener` uses odd numbers.
+The actual channel establishment concludes in the `Staging` phase.. The `opener`
+after preliminary and not obliging negotiation can proceed and submit the
+transaction. He should await for required amount of on-chain confirmations
+before sending the `Staged` message. The `non-opener` should confirm the
+transaction and await for the `ChannelStaged` message.
 
-#### Chenque Management
+After this step both parties should confirm that the creation transaction
+reached required depth and they enter start the channel operating phase. During
+this phase we assume that all the failures are fatal so we use the `Error`
+message to report them. Some of the errors can be replaced with more specific
+messages in the future.
 
-This flow consists of a single request and acknowledge pairs:
-
-- `AddCheque`/`ChequeAdded`
-- `BumpCheque`/`ChequeBumped`
-- `UnlockCheque`/`ChequeUnlocked`
-- `TimeoutCheque`/`ChequeTimedOut`
-- `CancelLockedCheque`/`LockedChequeCanceled`
+##### The Full Conversation
 
 ```mermaid
  sequenceDiagram
-  participant PartnerA
-  participant PartnerB
+  participant opener
+  participant non-opener
 
-  par Fully Duplex and Pipelined
-    PartnerA ->> PartnerB: AddCheque
-    PartnerB ->> PartnerA: ChequeAdded
+  opener ->> non-opener: Staged
+  non-opener ->> opener: Staged
+```
 
-    PartnerA ->> PartnerB: AddCheck
-    PartnerA ->> PartnerB: UnlockCheque
+##### The Messages
 
-    PartnerB ->> PartnerA: ChequeAdded
-    PartnerB ->> PartnerA: ChequeUnlocked
-  and
-    PartnerB ->> PartnerA: AddCheque
-    PartnerA ->> PartnerB: ChequeAdded
+```
+type Blake2b256Hash = ByteString
+
+type TxId = Blake2b256Hash
+
+type TxOutRef = (TxId, Integer)
+
+data Staged = Staged { txOutRef :: TxOutRef }
+```
+
+### Channel Lifecycle: Operating
+
+During this phase all the messages are exchanged in a fully asynchronous and
+pipelined manner. We tag all the conversation with a unique identifier which is
+repeated across the messages. The partners keep an independent sequence number
+which is used for an `id`. To avoid collisions `initiator` uses even numbers and
+`non-initiator` uses odd numbers. In the context of conversation we use the term
+`requester` for the party which starts the conversation and `responder` for the
+other party.
+
+```haskell
+type ConversationId = Natural
+-- ^ Initiator uses even numbers, non-initiator uses odd numbers
+-- when starting a conversation.
+
+type ConversationMessage msg = (ConversationId, msg)
+```
+
+#### `Success` and `Failure`
+
+In the context of conversations we introduce two generic responses which are
+used for acknowledgements and non fatal error reporting. These messages can be
+replaced with more specific ones in the future.
+
+```haskell
+data Success = Success
+newtype Failure = Failure { message :: Text }
+```
+
+#### Cheque Management
+
+All cheque related conversations are tagged with cheque `Index`.
+
+```haskell
+type ChequeMessage msg = (Index, msg)
+```
+
+Given the above we don't include the `Index` in the below message definitions.
+
+Cheque related conversations consists of request response pairs. We use
+`Success` and `Failure` for the responses in most cases.
+
+### Managing Offered Cheques
+
+#### Issuing and Raising Cheques
+
+The issuer is able to propose a cheque and increase an amount of the cheque. The
+moment a signature for a given cheque is created it should be considered as
+committed even if the cheque is not yet accepted by the confirmed by the
+counterparty.
+
+```haskell
+type Hash = ByteString
+type Lock = Sha256Hash
+
+-- 64 bytes of Ed25519 signature
+type Signature = ByteString
+
+data Add
+    = Add
+        { amount :: Amount
+        , lock :: Maybe Lock
+        -- ^ Empty for normal cheques
+        , signature :: Signature
+        }
+
+data Raise
+    = Raise
+        { amount :: Amount
+        -- ^ the new total amount
+        , signature :: Signature
+        }
+```
+
+#### Expiring Cheques
+
+`Timeout` message informs the partner that a given cheque has expired. During
+the next [`Squashing`](#Squashing) its index MUST be accounted for in the
+`Squash` but with null value. Responder MUST return either `Success` or
+`Failure` message.
+
+```haskell
+data Timeout = Timeout
+```
+
+### Managing Received Cheques
+
+#### Fulfilling Cheques
+
+When receiver of a conditional cheque learns the secret it can be unlocked on
+L1. The cheque is time limited so if both parties wish to preserve the channel
+open it should be normalized in order to remove the deadline.
+
+```haskell
+-- 65 random bytes - the preimage of the lock
+type Secret = ByteString
+data Normalize
+    = Normalize
+        { secret :: Secret
+        -- ^ Lock secret
+        }
+
+data Normalized
+    = Normalized
+        {  signature :: Signature
+        -- ^ Signature for a new normalized cheque
+        }
+```
+
+#### Cancelling Cheques Through Paybacks
+
+The locked cheque cancellation should be propagated in the receiver to the
+sender direction. To illustrate the process let's imagine that the final
+recipient who knows the secret wishes to cancel the payment (of course this
+action can be coordinated through separate channel with the buyer). The final
+recipient can do this by announcing that the secret will be never revealed and
+by issuing a payback cheque. This process of payback issuance can be now safely
+continued upstream to the sender.
+
+The cancellation can be expressed through issuance of a payback cheque of the
+same amount locked (or amount lowered by some fee) using the same lock. The
+timeout of the payback cheque should be strictly lower than the timeout of the
+original cheque - this delta is indicated through `paybackTimeoutDelta` .
+
+The benefit of that approach is that we preserve atomicity of the operation -
+the cancellation is expressed through payback committed right away. During the
+next [Snapshotting](#Snapshotting) both cheques MUST be squashed.
+
+```haskell
+type POSIX = Milliseconds
+
+data Cancel
+    = Cancel
+        { index :: Index
+        -- ^ Index of the new payback cheque.
+        -- The cancelled cheque index is part of the `ChequeMesssage`
+        -- envelope.
+        , timeout :: POSIX
+        -- ^ Timeout should be strictly lower than the timeout of the original cheque
+        , signature :: Signature
+        -- ^ Signature for the new payback cheque
+        }
+```
+
+#### Snapshotting
+
+##### Overview
+
+When the channel is operational and not quiescent both partners work with
+possibly partial knowledge of the channel state. None of them can be sure what
+is the latest set of commitments from the other party side - most recent cheques
+updates can be still on the way. Additionally none of the partners can assume
+what should be the next squashing accounting strategy of the other partner. On
+the peer protocol level we want to minimize the necessity for any
+synchronization points which would require both parties to block the regular
+channel operations.
+
+Fortunately in contrast to HTLCs and the commitment scheme present in the BLN in
+CL:
+
+- Cheques are atomic and self contained commitments.
+- Any two valid `Snapshot`s provided by the both partners can be unified safely
+  (please check the [../adrs/minimal-state.md] for more details).
+
+Given the two properties `Snapshotting` can be considered an operation which is
+optional from the security perspective but essential from the operational angle.
+Through squashing partners make "room" for new pending HTLCs commitments or
+regular cheque "threads".
+
+##### The Full Conversation
+
+The main goal of the `requester` in this conversation is to create a snapshot
+which squashes the other's cheques. Only the `requester` is allowed to decide
+which cheques won't be `raised` any more and accounted for in the other's
+`Squash`. Symmetrically he is not able to squash own cheques right away so the
+initial `SnapshotSigned` request contains the latest own `Squash` confirmed by
+the partner. If there was no `Squash` confirmed by the partner yet the
+`requester` should use an empty `Squash` as the other's `Squash` (check the
+[../adrs/minimal-state.md] for more details). The `reponder` who receives
+already signed snapshot can just accept it and respond with `SnapshotSignature`
+but can also update the other `Squash` in the `Snapshot` and send it back with
+the signature in the `SnapshotUpdated` message.
+
+```mermaid
+ sequenceDiagram
+  participant requester
+  participant responder
+
+  requester ->> responder: SnapshotSigned
+  alt Signing the Snapshot
+    responder ->> requester: SnapshotSignature
+  else Updating the Snapshot
+    responder ->> requester: SnapshotUpdated
+    requester ->> responder: SnapshotSignature
   end
 ```
 
-#### Snaphotting
+##### The Messages
+
+```haskell
+data Exclude = [Index]
+
+data Squash =
+  { amt :: Amount
+  , idx :: Index
+  , exc :: Exclude
+}
+
+data Snapshot = Snapshot
+  { sq0 :: Squash
+  , sq1 :: Squash
+}
+
+data SignedSnapshot = SignedSnapshot Snapshot Signature
+
+dat SnpashotUpdated = SnapshotUpdated Snapshot Signature
+
+data SnapshotSignature = SnapshotSignature Signature
+```
+
+### Channel Lifecycle: Closing
+
+The closing phase serves purely informational purpose to possibly speed up the
+process of the transaction submission. After triggering a `close` step on the
+`L1` a given partner will not accept any new cheques. Theoretically he could
+issue new cheques or perform `Squashing` but we recommend to stop any new
+operations.
+
+Partners may notify about the settlement of the step transactions before the
+required `minimumDepth` is reached. Partners can retransmit some of the messages
+in the case of rollbacks.
+
+#### The Full Conversation
+
+All the `Success` responses encode acknowledgement of the message reception.
 
 ```mermaid
  sequenceDiagram
-  participant PartnerA
-  participant PartnerB
+  participant closer
+  participant non-closer
 
-  PartnerA ->> PartnerB: Squash
-  Note over PartnerA: Stops bumping squashed cheques till disconnection or ack
+  closer ->> non-closer: Closing
+  non-closer ->> closer: Success
 
-  PartnerB ->> PartnerA: Snapshot
-  Note over PartnerB: Considers all the squashed cheques as closed
+  closer ->> non-closer: Closed
+  non-closer ->> closer: Success
 
-  PartnerA ->> PartnerB: SnapshotAck
-  Note over PartnerA: Considers all the squashed cheques as closed
+  non-closer ->> closer: Responding
+  closer ->> non-closer: Success
+
+  non-closer ->> closer: Responded
+  closer ->> non-closer: Success
+```
+
+#### The Messages
+
+```haskell
+data Closing = Closing
+
+data Closed = Closed
+
+data Responding = Responding
+
+data Responded = Responded
 ```
