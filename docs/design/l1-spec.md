@@ -422,11 +422,10 @@ pub type CStep {
 ```
 
 Note that the type is called `NStep` rather than `Step`. `NStep` is loosely
-inspired by 'nested step'. Similiarly, `CStep` is loosely inspired 
-on 'continuing step'.
-This better reflects the handling logic. For example, `open`
-doesn't have a script input, and `end` doesn't have an output.
-So, for example, `NStep` does not include an `Open` constructor as we might expect. 
+inspired by 'nested step'. Similiarly, `CStep` is loosely inspired on
+'continuing step'. This better reflects the handling logic. For example, `open`
+doesn't have a script input, and `end` doesn't have an output. So, for example,
+`NStep` does not include an `Open` constructor as we might expect.
 
 ### Channel input/output
 
@@ -503,7 +502,7 @@ The `next_input` function inspects the item at the head of `tx.inputs` and then
 recur over the tail. Thus the function signature is
 
 ```aiken
-fn next_input(own_cred : Credentials, inputs : List<Input>) -> 
+fn next_input(own_cred : Credentials, inputs : List<Input>) ->
   (ChannelId, Address, Amount, Keys, Stage, List<Input>)
 ```
 
@@ -556,14 +555,14 @@ Argument order for step functions is as follows, with their reserved variable
 names:
 
 1. Tx constants:
-  1. Channel Id : `cid`
-  1. Signatories : `signers = tx.extra_signatories`
-  1. Validity range lower bound `lb = tx.validity_range.lower_bound`,
-  1. Validity range upper bound `ub = tx.validity_range.upper_bound`
+1. Channel Id : `cid`
+1. Signatories : `signers = tx.extra_signatories`
+1. Validity range lower bound `lb = tx.validity_range.lower_bound`,
+1. Validity range upper bound `ub = tx.validity_range.upper_bound`
 1. Input derived:
-  1. Total funds `tot_in`
-  1. Keys `keys_in`
-  1. Stage `stage_in`
+1. Total funds `tot_in`
+1. Keys `keys_in`
+1. Stage `stage_in`
 1. Redeemer derived: `steps` / step specific variables
 1. Output derived (ordered analogously to input with `_out` suffix)
 
@@ -579,15 +578,13 @@ we'll use the alias `ExtendedInt`
 
 We encode the step verification as function that fails or returns unit.
 
-In every tx precisely one of the partners signs the tx. 
-If neither partner has signed the tx fails.
-If both partners have signed, then the behaviour is undefined.
-`signed_by_vk0` is a boolean such that: 
+In every tx precisely one of the partners signs the tx. If neither partner has
+signed the tx fails. If both partners have signed, then the behaviour is
+undefined. `signed_by_vk0` is a boolean such that:
 
 - `True`, if the tx is signed by `vk0`,
 - `False`, if the tx is signed by `vk1`
-- `fail` otherwise 
-
+- `fail` otherwise
 
 #### Do open
 
@@ -607,18 +604,33 @@ Since an `open` necessarily involves minting a thread token, we defer to the
   - Add.Out.2 : Amount `tot_out`
 - Add.Con : Constraints
   - Add.Con.0 : Total amount has increased by `x = tot_out - tot_in`, `x > 0`
-  - Add.Con.1 : If tx signed by `vk0` then `amt1_in == amt1_out` else `amt1_in + x == amt1_out`
+  - Add.Con.1 : If tx signed by `vk0` then `amt1_in == amt1_out` else
+    `amt1_in + x == amt1_out`
   - Add.Con.2 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
-  - Add.Con.3 : Else 
-    - Add.Con.3.0 : Snapshot signed by other key
+  - Add.Con.3 : Else
+    - Add.Con.3.0 : Snapshot signed by `other`
     - Add.Con.3.1 : `snapshot_out` equals provided union `snapshot_in`
 
 #### Do close
 
-- One of the `keys_in`, `closer`, has singed the tx
-- `keys_out == (closer, non_closer)` where `non_closer` is the other key in
-  `keys_in`
-- Verify the `receipt` with key `non_closer`.
+- Add.In : Input state
+  - Add.In.0 : Keys `keys_in`
+  - Add.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
+  - Add.In.2 : Amount `tot_in`
+- Add.Out : Output state
+  - Add.Out.0 : Keys `keys_out`
+  - Add.Out.1 : `Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`
+  - Add.Out.2 : Amount (at least) `tot_in`
+- Add.Con : Constraints
+
+  - Add.Con.0 : Receipt contents signed by `other`
+  - Add.Con.1 : If tx signed by `vk0` then `keys_in == keys_out` else keys are
+    reversed
+  - Add.Con.2 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
+  - Add.Con.3 : Else
+    - Add.Con.3.0 : Snapshot signed by other key
+    - Add.Con.3.1 : `snapshot_out` equals provided union `snapshot_in`
+
 - The total funds is at least as much `tot_in <= tot_out`
 - Unwrap the stages:
   - The `Opened(amt1, snapshot, respond_period) = stage_in`

@@ -1,9 +1,9 @@
-use aiken/collection/dict.{Dict}
+use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/interval.{Interval}
 use cardano/address.{Address, Script}
-use cardano/assets.{AssetName}
+use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -13,35 +13,6 @@ use cl/step.{do_add}
 use cl/token
 use cl/types as t
 use env
-
-fn count_tokens(tokens: Dict<AssetName, Int>) -> (Int, Int) {
-  do_count_tokens(tokens |> dict.to_pairs, 0, 0)
-}
-
-/// We depend on the following assumptions: 
-/// 
-/// - If a bolt token exists, it will appear first 
-/// - All other tokens must be NFTs
-fn do_count_tokens(
-  tokens: Pairs<AssetName, Int>,
-  n_mint: Int,
-  n_burn: Int,
-) -> (Int, Int) {
-  when tokens is {
-    [Pair(curr, amt), ..rest] ->
-      if curr == token.bolt {
-        expect rest == []
-        (0, 0)
-      } else if amt == 1 {
-        do_count_tokens(rest, n_mint + 1, n_burn)
-      } else if amt == -1 {
-        do_count_tokens(rest, n_mint, n_burn + 1)
-      } else {
-        fail @"illegal value"
-      }
-    [] -> (n_mint, n_burn)
-  }
-}
 
 validator cl {
   mint(redeemer: t.MintRedeemer, own_hash: ScriptHash, tx: Transaction) {
@@ -54,7 +25,7 @@ validator cl {
       ..
     } = tx
     let own_mint = mint |> assets.tokens(own_hash)
-    let (n_mint, n_burn) = count_tokens(own_mint)
+    let (n_mint, n_burn) = token.count_tokens(own_mint)
     let (maybe_seed, steps) = redeemer
     let outputs =
       if n_mint > 0 {
@@ -224,6 +195,6 @@ fn continuing_output(
         continuing_output(own_hash, cid, prev_address, rest_outputs)
       }
     }
-    [] -> fail @"Continuing output not foundcid_ == cid,"
+    [] -> fail @"Continuing output not found"
   }
 }
