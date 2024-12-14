@@ -25,9 +25,10 @@ A user can perform various high level actions, including:
 
 Signposting:
 
-- For gentler intro to CL, check out the blog and the
+- For gentler intro to CL, check out the
+  [blog](https://cardano-lightning.org/blog) and the
   [minimal lifecycle ADR](../ards/minimal-lifecycle.md) for a general
-  introduction lifecycle.
+  introduction lifecycle of the channel.
 - For terms, see the [glossary](../glossary.md)
 - For explanations on how to read this spec, see the appendix.
 

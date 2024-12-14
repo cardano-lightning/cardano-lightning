@@ -79,7 +79,7 @@ A third [stage](#stage) of a [channel](#channel). It is the result of an
 
 ### end
 
-A [step](#step) that [unstages](#unstage) a [resolved](#resolved)
+A [step](#step) that [unstages](#unstage) a [responded](#responded)
 [channel](#channel). The participant that performed the [close](#close) unlocks
 their funds.
 
@@ -88,6 +88,12 @@ their funds.
 The preferred term for amount of assets in the channel that are locked as
 collateral on the L1. Use the term 'funds' over alternatives such as 'value',
 'assets', 'tokens', _etc_.
+
+### local
+
+When discussing a [channel](#channel) from the perspective of one of the two
+[participants](#participant), the term 'local' refers to the participant in
+question.
 
 ### L1
 
@@ -113,6 +119,19 @@ word.)
 In relation to [cheques](#cheque), it is an [L2](#l2) action that replaces a
 locked cheque with a normal cheque. The replacement cheque must share the same
 index, and generally shares the same amount.
+
+### other
+
+Cheques sent by the partner which we are talking about. The moment a cheque is
+signed and sent it should be considered an `other`s cheque even without
+confirmation. `Squash` which consists of `other` cheques can be also attributed
+as `other`.
+
+### own
+
+Cheques issued by the other partner which belong to the peer which we are
+talking about. `Squash` which consists o `own` cheques can be also attributed as
+`own`.
 
 ### open
 
@@ -141,17 +160,29 @@ A [step](#step) that [unstages](#unstage) an [elapsed](#elapsed)
 [channel](#channel). The participant that did not perform the [close](#close)
 recovers their funds.
 
-### resolve
+### respond
 
 A [step](#step) that changes the [stage](#stage) from [closed](#closed) to
-[resolved](#resolved). This is performed by the [participant](#participant) who
-did not performed the [close](#close) step. The participant supplies to their
-summary of the off-chain transacting to the L1 and unlocks their due funds.
+[responded](#responded). This is performed by the [participant](#participant)
+who did not performed the [close](#close) step. The participant supplies to
+their summary of the off-chain transacting to the L1 and unlocks their due
+funds.
 
-### resolved
+### remote
+
+When discussing a [channel](#channel) from the perspective of one of the two
+[participants](#participant), the term 'remote' refers to the other participant.
+
+### respond period
+
+The time period after a [close](#close) step during which the [elapse](#elapse)
+can be performed. Please note that [respond](#respond) can be afer that deadline
+as well.
+
+### responded
 
 A third [stage](#stage) of a [channel](#channel). The participant who did not
-perform the [close](#close) performs a [resolve](#resolve) step where the
+perform the [close](#close) performs a [respond](#respond) step where the
 off-chain summary is provided to the L1. The participant unlocks the funds owed.
 
 ### settle
