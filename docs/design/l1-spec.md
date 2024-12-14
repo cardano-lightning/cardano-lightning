@@ -161,16 +161,18 @@ type Timeout = Int // Posix Timestamp
 
 type Normal = (Index, Amount)
 
-type Hash32 = ByteString -- 32 bytes
+type Hash32 = ByteArray // 32 bytes
 
-type Lock {
+type HashLock {
   Blake2b256Lock(Hash32)
   Sha2256Lock(Hash32)
   Sha3256Lock(Hash32)
 }
 
-type Locked {
-  Htlc(Index, Amount, Timeout, Lock)
+pub type Htlc = (Index, Amount, Timeout, HashLock)
+
+pub type Locked {
+  HtlcLocked(Htlc)
 }
 
 type Cheque {
@@ -178,10 +180,10 @@ type Cheque {
   LockedCheque(Locked)
 }
 
-type Secret = Bytestring // <= 64 bytes
+type Secret = ByteArray // <= 64 bytes
 
 type Unlocked {
-  Unhtlc(Htlc, Secret)
+  HtlcUnlocked(Htlc, Secret)
 }
 
 type MCheque {
@@ -190,8 +192,8 @@ type MCheque {
   MUnlocked(Unlocked)
 }
 
-type Sig64 = ByteString -- 64 bytes
-type Signature = Sig64
+type Bytes64 = ByteArray // 64 bytes
+type Signature = Bytes64
 type Signed<T> = (T, Signature)
 ```
 
@@ -303,9 +305,8 @@ change on a `close`.
 
 ```aiken
 type ScriptHash = ByteArray // 28 bytes
-type VerificationKey = ByteString // 32 bytes,
+type VerificationKey = ByteArray // 32 bytes,
 type Keys = (VerificationKey, VerificationKey)
-type Pend = (Amount, List<ChequeReduced>)
 type Period = Int // Time delta
 
 type Stage {
@@ -402,27 +403,30 @@ type SpendRedeemer {
   DeferToMint
 }
 
-type MintRedeemer = (Option<OutputReference>, List<PStep>)
+type MintRedeemer = (Option<OutputReference>, List<NStep>)
 
 type Secrets = List<(Idx, Secret)>
 
-type PStep {
-  Continuing {
-    Add(Option<Signed Snapshot>)
-    Close(Receipt)
-    Respond(Receipt, Bool)
-    Resolve(Secrets)
-    Elapse(Secrets)
-    Free(Secrets, Bool)
-  }
+pub type NStep {
+  Continuing(CStep)
   End(Secrets)
+}
+
+pub type CStep {
+  Add(Option<Signed<Snapshot>>)
+  Close(Receipt)
+  Respond(Receipt, Bool)
+  Resolve(Secrets)
+  Elapse(Secrets)
+  Free(Secrets, Bool)
 }
 ```
 
-Note that the type is called `PStep` rather than `Step`. `PStep`, loosely
-inspired by 'pseudo-step'. `PStep` is nested and does not include an `Open`
-constructor. This better reflects the handling logic. For example, `open`
-doesn't have a script input, and `end` doesn't have an output.
+Note that the type is called `NStep` rather than `Step`. `NStep` is loosely
+inspired by 'nested step'. Similiarly, `CStep` is loosely inspired on
+'continuing step'. This better reflects the handling logic. For example, `open`
+doesn't have a script input, and `end` doesn't have an output. So, for example,
+`NStep` does not include an `Open` constructor as we might expect.
 
 ### Channel input/output
 
@@ -499,7 +503,8 @@ The `next_input` function inspects the item at the head of `tx.inputs` and then
 recur over the tail. Thus the function signature is
 
 ```aiken
-fn next_input(own_cred : Credentials, inputs : List<Input>) -> (cid, address, amount, keys, stage, inputs)
+fn next_input(own_cred : Credentials, inputs : List<Input>) ->
+  (ChannelId, Address, Amount, Keys, Stage, List<Input>)
 ```
 
 If the function exhausts the list, then it fails.
@@ -545,22 +550,21 @@ This fails if any input belongs to the script.
 To avoid (re)structuring and destructuring data across function boundaries, we
 are compelled to factor code into functions of many arguments. The context
 required for each step (type) is not identical, although there is considerable
-overlap. We standardize argument ordering to keep things manageable.
+overlap. We standardize arguments and ordering to keep things manageable.
 
 Argument order for step functions is as follows, with their reserved variable
 names:
 
-1. Script's own hash: `own_hash`
 1. Tx constants:
+1. Channel Id : `cid`
 1. Signatories : `signers = tx.extra_signatories`
 1. Validity range lower bound `lb = tx.validity_range.lower_bound`,
 1. Validity range upper bound `ub = tx.validity_range.upper_bound`
-1. Mint derived: `n_burns`
-1. Redeemer derived: `steps` / step specific variables
 1. Input derived:
 1. Total funds `tot_in`
 1. Keys `keys_in`
 1. Stage `stage_in`
+1. Redeemer derived: `steps` / step specific variables
 1. Output derived (ordered analogously to input with `_out` suffix)
 
 Not all steps require all context.
@@ -575,6 +579,14 @@ we'll use the alias `ExtendedInt`
 
 We encode the step verification as function that fails or returns unit.
 
+In every tx precisely one of the partners signs the tx. If neither partner has
+signed the tx fails. If both partners have signed, then the behaviour is
+undefined. `signed_by_vk0` is a boolean such that:
+
+- `True`, if the tx is signed by `vk0`,
+- `False`, if the tx is signed by `vk1`
+- `fail` otherwise
+
 #### Do open
 
 The logic of `open` is essentially covered by `new_output` and the `Mint` logic.
@@ -583,28 +595,43 @@ Since an `open` necessarily involves minting a thread token, we defer to the
 
 #### Do add
 
-- One of `keys_in`, has signed the tx
-- Total amount has increased by `x = tot_out - tot_in`, `x >= 0`
-- Keys are unchanged (`keys_in == keys_out`)
-- Expect `Opened(amt1_in, snapshot_in, period_in) = stage_in`
-- Expect `Opened(amt1_out, snapshot_out, period_out) = stage_out`
-- If the signer is `keys_in.0`, then `amt1_in == amt1_out` else
-  `amt1_in + x == amt1_out`
-- If `Some(snapshot) = maybe_snapshot` then
-  - verify the `maybe_snapshot` with the other key
-  - `snapshot_out` equals the union of `maybe_snapshot` and `snapshot_in`
-- Else `snapshot_in == snapshout_out`
-
-The function signature is
-
-`fn do_add(   signers: List<VerificationKeyHash>,    maybe_snapshot: Option<Signed<Snapshot>>,    amt_in: Amount,    keys_in: Keys,    stage_in: Stage,    amt_out: Amount,    keys_out: Keys,    dat_out: Stage )`
+- Add.In : Input state
+  - Add.In.0 : Keys `keys_in`
+  - Add.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
+  - Add.In.2 : Amount `tot_in`
+- Add.Out : Output state
+  - Add.Out.0 : Keys `keys_in`
+  - Add.Out.1 : `Opened(amt1_out, snapshot_out, period_in) = stage_out`
+  - Add.Out.2 : Amount `tot_out`
+- Add.Con : Constraints
+  - Add.Con.0 : Total amount has increased by `x = tot_out - tot_in`, `x > 0`
+  - Add.Con.1 : If tx signed by `vk0` then `amt1_in == amt1_out` else
+    `amt1_in + x == amt1_out`
+  - Add.Con.2 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
+  - Add.Con.3 : Else
+    - Add.Con.3.0 : Snapshot signed by `other`
+    - Add.Con.3.1 : `snapshot_out` equals provided union `snapshot_in`
 
 #### Do close
 
-- One of the `keys_in`, `closer`, has singed the tx
-- `keys_out == (closer, non_closer)` where `non_closer` is the other key in
-  `keys_in`
-- Verify the `receipt` with key `non_closer`.
+- Add.In : Input state
+  - Add.In.0 : Keys `keys_in`
+  - Add.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
+  - Add.In.2 : Amount `tot_in`
+- Add.Out : Output state
+  - Add.Out.0 : Keys `keys_out`
+  - Add.Out.1 : `Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`
+  - Add.Out.2 : Amount (at least) `tot_in`
+- Add.Con : Constraints
+
+  - Add.Con.0 : Receipt contents signed by `other`
+  - Add.Con.1 : If tx signed by `vk0` then `keys_in == keys_out` else keys are
+    reversed
+  - Add.Con.2 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
+  - Add.Con.3 : Else
+    - Add.Con.3.0 : Snapshot signed by other key
+    - Add.Con.3.1 : `snapshot_out` equals provided union `snapshot_in`
+
 - The total funds is at least as much `tot_in <= tot_out`
 - Unwrap the stages:
   - The `Opened(amt1, snapshot, respond_period) = stage_in`
@@ -741,20 +768,20 @@ responder (non-closer) can `free` in the stage `Responded`. Both partners can
 
 #### Spend
 
-Recall that All logic is deferred to the mint purpose.
+Recall that all logic is deferred to the mint purpose.
 
-- S.0 : Extract `own_hash = dat.0`.
-- S.1 : Mint value `tx.mint` has `own_hash`
+- S.0 : Extract `own_hash` from datum
+- S.1 : Own hash is present in `tx.mint`
 
 #### Mint
 
 Broadly the mint logic is as follows:
 
+- Extract from the tx the validity range and signatories.
 - Count number of thread tokens minted and burned in own mint.
 - If no thread tokens are minted or burned then a bolt token is used.
 - If there are minted thread tokens, then the new outputs are in the outputs
   (and appear before all other script outputs)
-- Extract from the tx the validity range and signatories.
 - While there are steps:
   - Get next script input.
   - If step is not an `end`:
@@ -801,13 +828,13 @@ fn reduce(
   lb : Bound,
   ub: Bound,
   n_burns: Int,
-  steps : List<PStep>,
+  steps : List<NStep>,
   inputs : List<Input>,
   outputs : List<Output>
 )
 ```
 
-- When `p_steps` is:
+- When `steps` is:
   - `[]` then finalize:
     - All end steps accounted for ie `n_burns == 0`
     - No remaining `inputs` belong to script (`no_inputs`)

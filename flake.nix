@@ -1,5 +1,5 @@
 {
-  description = "Cardano Lightning Network blog";
+  description = "Cardano Lightning Monorepo";
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
@@ -8,6 +8,7 @@
     git-hooks-nix.inputs.nixpkgs.follows = "nixpkgs";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
+    aiken.url = "github:aiken-lang/aiken/94ff20253b3d43ee5fcf501bb13902f58c729791";
   };
 
   outputs = inputs @ {flake-parts, ...}:
@@ -40,7 +41,16 @@
             alejandra.enable = true;
           };
         };
-        pre-commit.settings.hooks.treefmt.enable = true;
+        pre-commit.settings.hooks = {
+          treefmt.enable = true;
+          aiken = {
+            enable = true;
+            name = "aiken";
+            description = "Run aiken's formatter on ./aik";
+            files = "\\.ak";
+            entry = "${inputs'.aiken.packages.aiken}/bin/aiken fmt ./aik";
+          };
+        };
         # NOTE: You can also use `config.pre-commit.devShell`
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = [
@@ -53,7 +63,8 @@
           name = "cardano-lightning";
           # Let's keep this "path discovery techinque" here for refernece:
           # (builtins.trace (builtins.attrNames inputs.cardano-addresses.packages.${system}) inputs.cardano-cli.packages)
-          packages = with pkgs; [
+          packages = [
+            inputs'.aiken.packages.aiken
           ];
         };
       };
