@@ -26,7 +26,7 @@ This is our Concept phase. The aims are:
 - M2 : Validator(s)
   - [ ] - Validator v0 implementation
   - [ ] - Benchmarking and tests
-  - [ ] - Validator v1, with sub step)
+  - [ ] - Validator v1 with sub step
 - M3 : L2 Stack and Key Management
   - [ ] - CI/CD
   - [ ] - Networking layer
@@ -34,10 +34,10 @@ This is our Concept phase. The aims are:
   - [ ] - Signing server and proxy key setup
 - M4 : Tx builders
   - [ ] - Tx building
-  - [ ] - L1 abstraction/ interface
+  - [ ] - L1 abstraction/interface
   - [ ] - L1 provider implementation
 - M5 : Cli
-  - [ ] - Channel management w/ cli tool
+  - [ ] - Channel management cli tool
 - M6 : Demo
   - [ ] Channel setup, payment, teardown
   - [ ] Elementary routing
@@ -108,7 +108,7 @@ manner. This includes:
   - [ ] - Architecture design and stack choices
   - [ ] - CI/CD
   - [ ] - L1 abstraction
-  - [ ] - Monitoring/ logging/ notification features
+  - [ ] - Monitoring, logging, notification features
 - M2 : Core
   - [ ] - Core channel management features
 - M3 : N2N protocol(s)
