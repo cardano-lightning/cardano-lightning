@@ -4,39 +4,19 @@ use cardano/transaction.{OutputReference}
 use cl/prelude.{Amount, Bytes32, Period, Signed, Timeout}
 
 // ## Cheques
+pub type HtlcLock =
+  Bytes32
 
-pub type Normal =
-  (Index, Amount)
-
-pub type HashLock {
-  Blake2b256Lock(Bytes32)
-  Sha2256Lock(Bytes32)
-  Sha3256Lock(Bytes32)
-}
-
-pub type Htlc =
-  (Index, Amount, Timeout, HashLock)
-
-pub type Locked {
-  HtlcLocked(Htlc)
+pub type HtlcSecret {
+  Sha2_256Secret(ByteArray)
+  Sha3_256Secret(ByteArray)
+  Blake2b_256Secret(ByteArray)
 }
 
 pub type Cheque {
-  NormalCheque(Normal)
-  LockedCheque(Locked)
-}
-
-pub type Secret =
-  ByteArray
-
-pub type Unlocked {
-  Unhtlc(Htlc, Secret)
-}
-
-pub type MCheque {
-  MNormal(Normal)
-  MLocked(Locked)
-  MUnlocked(Unlocked)
+  Normal(Index, Amount)
+  Htlc(Index, Timeout, HtlcLock, Amount)
+  HtlcUnlocked(Index, Timeout, HtlcSecret, Amount)
 }
 
 // ## Channel
@@ -50,28 +30,23 @@ pub type ChannelId =
 pub type Exclude =
   List<Index>
 
-///
 pub type Squash =
   (Amount, Index, Exclude)
 
-///
 pub type Snapshot =
   (Squash, Squash)
 
-// ## Receipt 
-
-/// 
+// ## Receipt
 pub type Receipt =
-  (Option<Signed<Snapshot>>, List<Signed<MCheque>>)
+  (Option<Signed<Snapshot>>, List<Signed<Cheque>>)
 
-pub type LockedReduced {
-  HtlcReduced(Amount, Timeout, HashLock)
-}
+pub type HtlcLockedReduced =
+  (Amount, Timeout, HtlcLock)
 
 // ## Pend
 
 pub type Pend =
-  (Amount, List<LockedReduced>)
+  List<HtlcLockedReduced>
 
 // ## Spend Redeemer
 
@@ -99,9 +74,12 @@ pub type SpendRedeemer {
 }
 
 // ## Mint Redeemer
-
 pub type MintRedeemer =
   (Option<OutputReference>, List<NStep>)
+
+pub type Secret {
+  HtlcSecret(HtlcSecret)
+}
 
 pub type Secrets =
   List<(Index, Secret)>
