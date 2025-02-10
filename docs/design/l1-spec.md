@@ -222,9 +222,8 @@ piece of data, namely a `Squash`. The partner's squash is the summary of the
 cheques they received.
 
 Together, the two partners `Squash`s form a snapshot. The snapshot allows
-partners to maintain a manageable amount of  
-The squashes are ordered lexicographically by the partners verification key. The
-ordering is important.
+partners to maintain a manageable amount of cheques. The squashes are ordered
+lexicographically by the partners verification key. The ordering is important.
 
 ```aiken
 type Exclude = List<Index>
@@ -241,10 +240,11 @@ The verify function works analogously to signatures of cheques.
 
 #### Receipt
 
-The ending of a channel done across several steps. Each partner is responsible
-for their own funds. Each partner should **settle** their L2 state on the L1.
-This is done with a snapshot, and cheques unaccounted for. The receipt is made
-by the submitter, and consists of signed by their partner.
+The ending of a channel is done across several steps. Each partner is
+responsible for their own funds. Each partner should **settle** their L2 state
+on the L1. This is done with a snapshot, and cheques unaccounted for. The
+receipt is made by the submitter, and consists of pieces signed by their
+partner.
 
 ```aiken
 type Receipt =  (Option<Signed<Snapshot>>, List<Signed<MCheque>>)
@@ -423,10 +423,10 @@ pub type CStep {
 ```
 
 Note that the type is called `NStep` rather than `Step`. `NStep` is loosely
-inspired by 'nested step'. Similiarly, `CStep` is loosely inspired on
-'continuing step'. This better reflects the handling logic. For example, `open`
-doesn't have a script input, and `end` doesn't have an output. So, for example,
-`NStep` does not include an `Open` constructor as we might expect.
+inspired by 'nested step'. Similarly, `CStep` is loosely inspired on 'continuing
+step'. This better reflects the handling logic. For example, `open` doesn't have
+a script input, and `end` doesn't have an output. So, for example, `NStep` does
+not include an `Open` constructor as we might expect.
 
 ### Channel input/output
 
@@ -614,31 +614,54 @@ Since an `open` necessarily involves minting a thread token, we defer to the
 
 #### Do close
 
+> Comments:
+>
+> - Why are we ignoring the Lovelace amount on the inputs/outputs?
+> - Isn't "The total funds is at least as much `tot_in <= tot_out`" redundant
+>   with Add.Out.2
+> - Should we go crazy:
+>   ```
+>   pub type LockInfo = {
+>     HtlcLocked(Timeout, HtlcLock)
+>     HtlcUnlocked(Timeout, HtlcSecret)
+>   }
+>   pub type Cheque = (Index, Amount, Option(LockInfo))
+>   ```
+> - Should we expect that all the excluded cheques are provided in order?
+
 - Add.In : Input state
   - Add.In.0 : Keys `keys_in`
-  - Add.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
+  - Add.In.1 : `Opened(amt_in, snapshot_in, period_in) = stage_in`
   - Add.In.2 : Amount `tot_in`
 - Add.Out : Output state
   - Add.Out.0 : Keys `keys_out`
   - Add.Out.1 : `Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`
-  - Add.Out.2 : Amount (at least) `tot_in`
+  - Add.Out.2 : Amount `tot_out` and `tot_in <= tot_out`
 - Add.Con : Constraints
 
-  - Add.Con.0 : Receipt contents signed by `other`
-  - Add.Con.1 : If tx signed by `vk0` then `keys_in == keys_out` else keys are
+  - Add.Con.0 : If tx signed by `vk0` then `keys_in == keys_out` else keys are
     reversed
-  - Add.Con.2 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
-  - Add.Con.3 : Else
-    - Add.Con.3.0 : Snapshot signed by other key
-    - Add.Con.3.1 : `snapshot_out` equals provided union `snapshot_in`
+  - Add.Con.1 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
+  - Add.Con.2 : Else
+    - Add.Con.2.0 : Snapshot signed by other key
+    - Add.Con.2.1 : `snapshot_out` equals provided union `snapshot_in`
+  - Add.Con.3 : Cheques
+    - Add.Con.3.1 : Signed by other key
+    - Add.Con.3.2 : Either with `cheque.index > received.index`
+    - Add.Con.3.3 : Or `cheque.index elem received.exclude`
+    - Add.Con.3.4 : (Un)locked `cheque.timeout < ub`
+    - Add.Con.3.5 : The `pend` is correctly derived from the receipt
+  - Add.Con.4 : amt_rec + cheques_amt + squash_diff
+  - Add.Con.5 : `sq_out == sq_sent`
+  - Add.Con.6 : `timeout_out > ub + respond_period`
 
 - The total funds is at least as much `tot_in <= tot_out`
 - Unwrap the stages:
-  - The `Opened(amt1, snapshot, respond_period) = stage_in`
-  - The `Closed(amt, squash, timeout, pend) = stage_out`
-- `amt` is a calculated by
-  - the amount already recorded (either `tot_in - amt1` if the closer is also
-    the open, else `amt1`)
+  - The `Opened(amt_in, snapshot, respond_period) = stage_in`
+  - The `Closed(amt_out, squash, timeout, pend) = stage_out`
+- `amt_out` is a calculated by
+  - the amount already recorded (either `tot_in - amt_in` if the closer is also
+    the open, else `amt_in`)
   - plus the difference of squashes in the latest snapshot
   - plus the additional cheques not yet accounted for excluding pending cheques.
   - `squash` is the latest squash corresponding to the non-closer
@@ -660,7 +683,7 @@ at risk - not their partners.
 
 The signature of the do close function is
 
-`fn do_close(   signers: List<VerificationKeyHash>,    ub: ExtendedInt,    receipt: Receipt,    amt_in: Amount,    keys_in: Keys,    stage_in: Stage,    amt_out: Amount,    keys_out: Keys,    dat_out: Stage )`
+`fn do_close(channelId: ChannelId,   signers: List<VerificationKeyHash>,    ub: ExtendedInt,    receipt: Receipt,    amt_in: Amount,    keys_in: Keys,    stage_in: Stage,    amt_out: Amount,    keys_out: Keys,    dat_out: Stage )`
 
 #### Do respond
 
@@ -885,6 +908,9 @@ Variable names with suggestive names.
 - `red` - Redeemer
 - `tot_*` - 'total of \*'
 - `tx` - Transaction
+- `*_in` - Tx input value
+- `*_out` - Tx output value
+- `ub` - Upper bound
 
 Short hand should be used in cases where it is appropriate. All other shorthand
 should only be used, at worst, in places where the scope is small and local.
