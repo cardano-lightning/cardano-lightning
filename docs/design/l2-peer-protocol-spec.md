@@ -366,7 +366,7 @@ data Accept
 
 #### Staging
 
-The actual channel establishment concludes in the `Staging` phase.. The `opener`
+The actual channel establishment concludes in the `Staging` phase. The `opener`
 after preliminary and not obliging negotiation can proceed and submit the
 transaction. He should await for required amount of on-chain confirmations
 before sending the `Staged` message. The `non-opener` should confirm the
