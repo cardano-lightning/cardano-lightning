@@ -53,18 +53,34 @@
         };
         # NOTE: You can also use `config.pre-commit.devShell`
         devShells.default = pkgs.mkShell {
+          name = "cardano-lightning";
           nativeBuildInputs = [
             config.treefmt.build.wrapper
           ];
           shellHook = ''
             ${config.pre-commit.installationScript}
             echo 1>&2 "Welcome to the development shell!"
+
+            # FIXME: This should be packaged as a tool available in the shell
+            export VENV=./aik/test-vectors/.venv
+            # create dir if not exists
+            if [ ! -d "$VENV" ]; then
+              python3 -m venv $VENV
+            fi
+            source ./$VENV/bin/activate
+            pip install -r ./aik/test-vectors/requirements.txt
           '';
-          name = "cardano-lightning";
+
+          postShellHook = ''
+            ln -sf ${pkgs.python311.sitePackages}/* ./.venv/lib/python311.12/site-packages
+          '';
+
           # Let's keep this "path discovery techinque" here for refernece:
           # (builtins.trace (builtins.attrNames inputs.cardano-addresses.packages.${system}) inputs.cardano-cli.packages)
           packages = [
             inputs'.aiken.packages.aiken
+            pkgs.python311Packages.frozenlist
+            pkgs.python311
           ];
         };
       };

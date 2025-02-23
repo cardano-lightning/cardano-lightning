@@ -4,9 +4,11 @@ use aiken/crypto.{Signature}
 pub type Amount =
   Int
 
-/// Posix Timestamp
-pub type Timeout =
+pub type PosixMilliseconds =
   Int
+
+pub type Timeout =
+  PosixMilliseconds
 
 /// Posix time delta
 pub type Period =

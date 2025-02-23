@@ -1,15 +1,18 @@
 use aiken/crypto.{ScriptHash}
-use cardano/assets.{Value}
-use cl/prelude.{Amount}
+use cardano/assets.{Lovelace, Value}
 use cl/token
 use cl/types as t
 
-/// Ada only  
-pub fn amount(hash: ScriptHash, v: Value) -> (t.ChannelId, Amount) {
+/// TODO: Add support for non-ADA channels
+pub fn amount(hash: ScriptHash, v: Value) -> (t.ChannelId, Lovelace) {
   when v |> assets.flatten is {
-    [(_, _, amt), (hash_, name, _)] -> {
+    [("", _, lovelace), (hash_, name, _)] -> {
       expect hash_ == hash
-      (token.get_cid(name), amt)
+      (token.get_cid(name), lovelace)
+    }
+    [(hash_, name, _), ("", _, lovelace)] -> {
+      expect hash_ == hash
+      (token.get_cid(name), lovelace)
     }
     _ -> fail @"Illegal value"
   }
