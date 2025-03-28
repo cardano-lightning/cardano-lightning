@@ -9,7 +9,7 @@ use cardano/transaction.{
 }
 use cl/channel
 use cl/prelude.{Amount, PosixMilliseconds}
-use cl/step.{do_add, do_close}
+use cl/step.{do_add, do_close, do_elapse, do_end, do_free, do_respond}
 use cl/token
 use cl/types as t
 use env
@@ -34,7 +34,7 @@ validator cl {
       if n_mint > 0 {
         expect Some(seed) = maybe_seed
         expect inputs |> list.any(fn(i) { i.output_reference == seed })
-        process_new_channels(own_hash, seed, n_mint, outputs)
+        reduce_new_channels(own_hash, seed, n_mint, outputs)
       } else {
         expect None == maybe_seed
         outputs
@@ -67,7 +67,7 @@ validator cl {
   }
 }
 
-fn process_new_channels(
+fn reduce_new_channels(
   own_hash: ScriptHash,
   seed: OutputReference,
   n_mint: Int,
@@ -86,9 +86,9 @@ fn process_new_channels(
           expect (hash_, _, _): t.Datum = raw
           expect hash_ == own_hash
           expect reference_script == None
-          process_new_channels(own_hash, seed, n_mint - 1, rest)
+          reduce_new_channels(own_hash, seed, n_mint - 1, rest)
         } else {
-          process_new_channels(own_hash, seed, n_mint, rest)
+          reduce_new_channels(own_hash, seed, n_mint, rest)
         }
       }
       _ -> fail @"Expected new output"
@@ -96,15 +96,25 @@ fn process_new_channels(
   }
 }
 
-// Exclusive upper bound - the timestamp is "in the future"
-fn upper_bound(validity_range: Interval<PosixMilliseconds>) -> PosixMilliseconds {
-  let Interval(_, upper_bound) = validity_range
-  expect IntervalBound(Finite(upper_bound), is_inclusive) = upper_bound
+fn exclusive_bound(
+  interval_bound: IntervalBound<PosixMilliseconds>,
+) -> PosixMilliseconds {
+  expect IntervalBound { bound_type: Finite(ts), is_inclusive } = interval_bound
   if is_inclusive {
-    upper_bound
+    ts + 1
   } else {
-    upper_bound + 1
+    ts
   }
+}
+
+fn upper_bound(validity_range: Interval<PosixMilliseconds>) -> PosixMilliseconds {
+  let Interval { upper_bound, .. } = validity_range
+  exclusive_bound(upper_bound)
+}
+
+fn lower_bound(validity_range: Interval<PosixMilliseconds>) -> PosixMilliseconds {
+  let Interval { lower_bound, .. } = validity_range
+  exclusive_bound(lower_bound)
 }
 
 fn reduce(
@@ -135,6 +145,12 @@ fn reduce(
                     address_in,
                     non_new_channel_outs,
                   )
+                // Add(Option<Signed<Snapshot>>)
+                // Close(Receipt)
+                // Elapse(Secrets)
+                // Free(Secrets, Bool)
+                // Resolve(Secrets)
+                // Respond(Receipt, Bool)
                 expect
                   when cstep is {
                     t.Add(add) ->
@@ -162,6 +178,45 @@ fn reduce(
                         keys_out,
                         stage_out,
                       )
+                    t.Elapse(secrets) ->
+                      do_elapse(
+                        signers,
+                        lower_bound(validity_range),
+                        secrets,
+                        tot_in,
+                        keys_in,
+                        stage_in,
+                        tot_out,
+                        keys_out,
+                        stage_out,
+                      )
+                    t.Free(secrets, drop_old) ->
+                      do_free(
+                        signers,
+                        lower_bound(validity_range),
+                        secrets,
+                        drop_old,
+                        tot_in,
+                        keys_in,
+                        stage_in,
+                        tot_out,
+                        keys_out,
+                        stage_out,
+                      )
+                    t.Respond(receipt, drop_old) ->
+                      do_respond(
+                        cid,
+                        signers,
+                        lower_bound(validity_range),
+                        upper_bound(validity_range),
+                        receipt,
+                        drop_old,
+                        keys_in,
+                        stage_in,
+                        tot_out,
+                        keys_out,
+                        stage_out,
+                      )
                     _ -> fail @"not yet implemented"
                   }
                 reduce(
@@ -174,7 +229,15 @@ fn reduce(
                   rest_outputs,
                 )
               }
-              t.End(_) ->
+              t.End(secrets) -> {
+                expect
+                  do_end(
+                    signers,
+                    secrets,
+                    lower_bound(validity_range),
+                    keys_in,
+                    stage_in,
+                  )
                 reduce(
                   own_hash,
                   signers,
@@ -184,6 +247,7 @@ fn reduce(
                   n_burn - 1,
                   non_new_channel_outs,
                 )
+              }
             }
           [] -> fail @"Expect another step"
         }
