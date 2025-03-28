@@ -23,7 +23,7 @@ account.
 
 ## Cash Out as Partial Closure Payout
 
-Belowe sequence presents a scenario with two alternative flow paths (`alt`
+Below sequence presents a scenario with two alternative flow paths (`alt`
 blocks):
 
 - In the first branch the `cash out` is executed and the remaining `closure` is

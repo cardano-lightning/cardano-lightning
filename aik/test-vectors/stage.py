@@ -199,34 +199,20 @@ def generate_opened_vector() -> TestVector:
         cbor=cbor_bytes.hex()
     )
 
-def generate_vectors(count: int) -> List[TestVector]:
+def generate_vectors(args) -> List[TestVector]:
     """Generate specified number of test vectors"""
-    return [generate_opened_vector() for _ in range(count)]
+    vectors = [generate_opened_vector() for _ in range(args.count)]
+    output = json.dumps([asdict(v) for v in vectors], indent=2)
+    if args.output:
+        with open(args.output, 'w') as f:
+            f.write(output)
+    else:
+        print(output)
 
-def main():
-    parser = argparse.ArgumentParser(description='Generate test vectors for Aiken smart contracts')
-    subparsers = parser.add_subparsers(dest='command', required=True)
-
-    # gen-vectors command
-    gen_vectors = subparsers.add_parser('gen-vectors', help='Generate test vectors')
-    gen_subparsers = gen_vectors.add_subparsers(dest='subcommand', required=True)
-
+def register_gen_subparser(gen_subparsers):
     # stage subcommand
     stage_parser = gen_subparsers.add_parser('stage', help='Generate Stage test vectors')
     stage_parser.add_argument('--output', type=str, help='Output JSON file path')
     stage_parser.add_argument('--count', type=int, default=20, help='Number of test vectors to generate')
+    stage_parser.set_defaults(func=generate_vectors)
 
-    args = parser.parse_args()
-
-    if args.command == 'gen-vectors' and args.subcommand == 'stage':
-        vectors = generate_vectors(args.count)
-        output = json.dumps([asdict(v) for v in vectors], indent=2)
-
-        if args.output:
-            with open(args.output, 'w') as f:
-                f.write(output)
-        else:
-            print(output)
-
-if __name__ == '__main__':
-    main()
