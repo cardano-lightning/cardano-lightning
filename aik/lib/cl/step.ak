@@ -647,12 +647,15 @@ pub fn do_free(
             0
           }
 
-        trace @"Free.Con.3.2.2": @"`amt_freed == received_freed + sent_freed` to prevent noop looping"
-        let amt_freed = received_freed + sent_freed
-        expect amt_freed != 0
+        // TODO: Tautology to preserve the above side effecting evaluations - is this necessary?
+        let amt_freed = sent_freed + received_freed
+        expect amt_freed != 0 || amt_freed == 0
 
-        trace @"Free.Con.3.2.3": @"`tot_out == tot_in - amt_freed`"
-        tot_out == tot_in - amt_freed
+        trace @"Free.Con.3.2.3": @"`tot_out == sum(pend0_out) + sum(pend1_out)`"
+        expect tot_out == sum_pend(pend0_out) + sum_pend(pend1_out)
+
+        trace @"Free.Con.3.2.4": @"`tot_out != tot_in` to prevent noop looping"
+        tot_out != tot_in
       }
     }
     _ -> fail @"Invalid stage for the `free` step"
@@ -663,6 +666,7 @@ pub fn do_end(
   signers: List<VerificationKeyHash>,
   secrets: t.Secrets,
   lb: PosixMilliseconds,
+  tot_in: Amount,
   keys_in: t.Keys,
   stage_in: t.Stage,
 ) -> Bool {
@@ -703,9 +707,8 @@ pub fn do_end(
         trace @"End.Con.1.0.1": @"All pending cheques in `pend0` are unlocked with provided secrets"
         let received_freed = reduce_pend(pend0, [], secrets, lb)
 
-        // TODO: Tautology to preserve the above side effecting evaluations - is this necessary?
-        let amt_freed = sent_freed + received_freed
-        amt_freed != 0 || amt_freed == 0
+        trace @"End.Con.1.0.2": @"`tot_in == received_freed + sent_freed`"
+        tot_in == received_freed + sent_freed
       } else {
         trace @"End.Con.1.1": @"If signed by `keys_in.1`:"
         trace @"End.Con.1.1.0": @"`pend0 reduced by timeout < lb is empty`"
