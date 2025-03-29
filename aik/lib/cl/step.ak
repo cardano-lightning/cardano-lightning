@@ -499,11 +499,11 @@ pub fn do_elapse(
   trace @"Elapse.Out": @"Output state"
   trace @"Elapse.Out.0": @"Keys `keys_out`"
   expect keys_out == keys_in
-  trace @"Elapse.Out.1": @"`Resolved(pend0_out, _) = stage_out`"
+  trace @"Elapse.Out.1": @"`Resolved(pend0_out, pend1_out) = stage_out`"
   // There is no checking of the other partner's pend here - `pend1`.
   // That decision is in the hands of the closer if they
   // want to drop partner's cheques if any.
-  expect t.Resolved(pend0_out, _) = stage_out
+  expect t.Resolved(pend0_out, pend1_out) = stage_out
   // Provided by the caller
   trace @"Elapse.Out.2": @"Amount `tot_out`"
 
@@ -514,10 +514,14 @@ pub fn do_elapse(
   trace @"Elapse.Con.1": @"`timeout_in < lb` (respond period has passed)"
   expect timeout_in < lb
 
-  trace @"Elapse.Con.2": @"`pend0_out` is reduced from `pend_in` using provided secrets"
+  trace @"Elapse.Con.2": @"`pend0_out` is reduced from `pend_in` using provided secrets and results in `amt_freed`"
   let amt_freed = reduce_pend(pend_in, pend0_out, secrets, lb)
+
   trace @"Elapse.Con.3": @"`tot_out == tot_in - amt_in - amt_freed`"
-  tot_out == tot_in - amt_in - amt_freed
+  expect tot_out == tot_in - amt_in - amt_freed
+
+  trace @"Elapse.Con.4": @"`pend1_out == []`"
+  pend1_out == []
 }
 
 pub fn do_free(
