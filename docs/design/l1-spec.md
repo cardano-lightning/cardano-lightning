@@ -840,20 +840,15 @@ pub fn do_elapse(
 
 - Elapse.Out : Output state
   - Elapse.Out.0 : Keys `keys_out` where `keys_out == keys_in`
-  - Elapse.Out.1 : `Resolved(pend0_out, _) = stage_out`
+  - Elapse.Out.1 : `Resolved(pend0_out, pend1_out) = stage_out`
   - Elapse.Out.2 : Amount `tot_out`
 
 - Elapse.Con : Constraints
   - Elapse.Con.0 : `keys_in.0` has signed the tx
   - Elapse.Con.1 : `timeout_in < lb` (respond period has passed)
-
-  - Elapse.Con.2 : When secrets provided:
-    - Elapse.Con.2.0 : `pend_out` is reduced from `pend_in` using provided secrets
-    - Elapse.Con.2.1 : `tot_out == tot_in - amt_in - amt_freed` where `amt_freed` is total freed
-
-  - Elapse.Con.3 : When no secrets:
-    - Elapse.Con.3.0 : `pend_out == pend_in`
-    - Elapse.Con.3.1 : `tot_out == tot_in - amt_in`
+  - Elapse.Con.2 : `pend0_out` is reduced from `pend_in` using provided secrets and results in `amt_freed`
+  - Elapse.Con.3 : `tot_out == tot_in - amt_in - amt_freed`
+  - Elapse.Con.4 : `pend1_out == []`
 
 
 #### Do free
