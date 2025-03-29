@@ -913,8 +913,9 @@ pub fn do_free(
     - Free.Con.2.2 : `amt_in == amt_out`
     - Free.Con.2.3 : `pend1_out` is reduced from `pend1_in` using provided secrets and results in `received_freed`
     - Free.Con.2.4 : If `drop_old` then `pend0_out` is reduced by timeout from `pend0_in` by `timeout < lb` resulting in `sent_freed`
-    - Free.Con.2.5 : `amt_freed == received_freed + sent_freed` and `amt_freed != 0` to prevent noop looping
-    - Free.Con.2.6 : `tot_out == tot_in - amt_freed`
+    - Free.Con.2.5 : Else `pend0_out == pend0_in`
+    - Free.Con.2.6 : `amt_freed == received_freed + sent_freed` and `amt_freed != 0` to prevent noop looping
+    - Free.Con.2.7 : `tot_out == tot_in - amt_freed`
 
   - Free.Con.3 : When `stage_in` is `Resolved(pend0_in, pend1_in)`
     - Free.Con.3.0 : `Resolved(pend0_out, pend1_out) = stage_out`
@@ -930,7 +931,7 @@ pub fn do_free(
       - Free.Con.3.2.0 : `pend1_out` is `pend1_in` reduced with secrets and results in `received_freed`
       - Free.Con.3.2.1: If `drop_old` then `pend0_out` is `pend0_in reduced by `timeout < lb`
       - Free.Con.3.2.2 : Else `pend0_out == pend0_in`
-      - Free.Con.3.2.3 : `tot_out == tot_in - amt_freed`
+      - Free.Con.3.2.3 : `tot_out == sum(pend0_out) + sum(pend1_out)` so locked assets are possibly released
 
 #### Do end
 
@@ -946,6 +947,7 @@ pub fn do_end(
   signers: List<VerificationKeyHash>,
   secrets: t.Secrets,
   lb: PosixMilliseconds,
+  tot_in: Amount,
   keys_in: t.Keys,
   stage_in: t.Stage,
 ) -> Bool
@@ -969,8 +971,9 @@ pub fn do_end(
 
   - End.Con.1 : When stage is `Resolved(pend0, pend1)`
     - End.Con.1.0 : If signed by `keys_in.0`:
-      - End.Con.1.0.0 : `pend1` reduced by `timeout < lb` is empty
-      - End.Con.1.0.1 : All pending cheques in `pend0` are unlocked with provided secrets
+      - End.Con.1.0.0 : `pend1` reduced by `timeout < lb` is empty and results in `received_freed`
+      - End.Con.1.0.1 : All pending cheques in `pend0` are unlocked with provided secrets and results in `sent_freed`
+      - End.Con.1.0.2 : `tot_in == received_freed + sent_freed`
 
     - End.Con.1.1 : If signed by `keys_in.1`:
       - End.Con.1.1.0 : `pend0` reduced by `timeout < lb` is empty

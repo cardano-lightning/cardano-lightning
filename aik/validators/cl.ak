@@ -235,6 +235,7 @@ fn reduce(
                     signers,
                     secrets,
                     lower_bound(validity_range),
+                    tot_in,
                     keys_in,
                     stage_in,
                   )
