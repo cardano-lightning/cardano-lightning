@@ -651,7 +651,7 @@ pub fn do_free(
         let amt_freed = sent_freed + received_freed
         expect amt_freed != 0 || amt_freed == 0
 
-        trace @"Free.Con.3.2.3": @"`tot_out == sum(pend0_out) + sum(pend1_out)`"
+        trace @"Free.Con.3.2.3": @"`tot_out == sum(pend0_out) + sum(pend1_out)` so locked assets are possibly released"
         expect tot_out == sum_pend(pend0_out) + sum_pend(pend1_out)
 
         trace @"Free.Con.3.2.4": @"`tot_out != tot_in` to prevent noop looping"
@@ -707,7 +707,7 @@ pub fn do_end(
         trace @"End.Con.1.0.1": @"All pending cheques in `pend0` are unlocked with provided secrets"
         let received_freed = reduce_pend(pend0, [], secrets, lb)
 
-        trace @"End.Con.1.0.2": @"`tot_in == received_freed + sent_freed`"
+        trace @"End.Con.1.0.2": @"`tot_in == received_freed + sent_freed` so non-closer locked assets are protected"
         tot_in == received_freed + sent_freed
       } else {
         trace @"End.Con.1.1": @"If signed by `keys_in.1`:"
