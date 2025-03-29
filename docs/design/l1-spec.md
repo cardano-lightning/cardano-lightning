@@ -932,6 +932,7 @@ pub fn do_free(
       - Free.Con.3.2.1: If `drop_old` then `pend0_out` is `pend0_in reduced by `timeout < lb`
       - Free.Con.3.2.2 : Else `pend0_out == pend0_in`
       - Free.Con.3.2.3 : `tot_out == sum(pend0_out) + sum(pend1_out)` so locked assets are possibly released
+      - Free.Con.3.2.4 : `tot_out != tot_in` to prevent noop looping
 
 #### Do end
 
@@ -973,7 +974,7 @@ pub fn do_end(
     - End.Con.1.0 : If signed by `keys_in.0`:
       - End.Con.1.0.0 : `pend1` reduced by `timeout < lb` is empty and results in `received_freed`
       - End.Con.1.0.1 : All pending cheques in `pend0` are unlocked with provided secrets and results in `sent_freed`
-      - End.Con.1.0.2 : `tot_in == received_freed + sent_freed`
+      - End.Con.1.0.2 : `tot_in == received_freed + sent_freed` so non-closer locked assets are protected
 
     - End.Con.1.1 : If signed by `keys_in.1`:
       - End.Con.1.1.0 : `pend0` reduced by `timeout < lb` is empty
