@@ -543,6 +543,13 @@ fn no_inputs(own_cred : Credential, inputs : List<Input>) -> Void
 
 This fails if any input belongs to the script.
 
+### Steps overview
+
+The below diagram provides an overview of the steps and stages:
+
+![Channel stages and steps diagram](./l1-spec/stages.svg)
+
+
 ### Steps preamble
 
 #### Standardizing argument handling
