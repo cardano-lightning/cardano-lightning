@@ -71,8 +71,8 @@ The steps that progress from one stage to the next are follows:
   receipt. They release the funds they are owed, and not still locked.
 - `resolve : Responded -> Resolve` : The closer releases the funds they are
   owed, and not still locked.
-- `elapse : Closed -> Resolved` : A closer can release their funds, up to pending
-  locked cheques, if the `respond` is not sufficiently punctual.
+- `elapse : Closed -> Resolved` : A closer can release their funds, up to
+  pending locked cheques, if the `respond` is not sufficiently punctual.
 
 Steps that are fixed to a stage
 
@@ -319,7 +319,8 @@ type Datum = (ScriptHash, Keys, Stage)
 
 There are some scenarios where one of the two keys is no longer strictly
 necessary. For example, `resolved` stage after `elapse` with no pending locked
-cheques for the `closer`. However, we do will not consider optimising for these niche cases.
+cheques for the `closer`. However, we do will not consider optimising for these
+niche cases.
 
 > ::: WARNING ::: The order in which the keys appears matters and can change on
 > a `close` step. Details below.
@@ -358,12 +359,12 @@ will remain for the rest of the lifecycle.
 
 The `amt` is the amount of the funds that belong to the closer, according their
 receipt and the previous state. It does not reflect the receipt of the
-non-closer who is yet to settle but already includes the difference between the squashes
-from the latest snapshot. The detailed calculation is described below.
+non-closer who is yet to settle but already includes the difference between the
+squashes from the latest snapshot. The detailed calculation is described below.
 
 The `squash` is the latest squash for the non-closer, that is, the squash
-representing the cheques received by the non-closer. It will be used against
-the non-closer receipt squash to calculate the final `amt`.
+representing the cheques received by the non-closer. It will be used against the
+non-closer receipt squash to calculate the final `amt`.
 
 The `timeout` is the time after which the closer may perform an `elapse` step.
 
@@ -382,6 +383,11 @@ the list may have been reduced either by providing the secret or demonstrating
 that its timeout has passed.
 
 The `pend1` is the pending locked cheques received by the non-closer.
+
+##### Elapsed stage
+
+Suppose the stage is `Elapsed(pend)`. The `pend` has the same significance as in
+the `Closed` stage.
 
 ##### Resolved stage
 
@@ -583,19 +589,24 @@ undefined. `signed_by_vk0` is a boolean such that:
 
 #### Do open
 
-**Overview:**
+##### Overview
 
 The logic of `open` is essentially covered by `new_output` and the `Mint` logic.
 Since an `open` necessarily involves minting a thread token, we defer to the
 `Mint` logic.
 
-**Transition:** By executing this step we are transitioning from the unstage channel to the [Opened stage](#opened-stage).
+##### Transition
+
+By executing this step we are transitioning from the unstage channel to the
+["Opened stage"]((#opened-stage).
 
 #### Do add
 
-**Transition:** By executing this step we are circling back to [Opened stage](#opened-stage).
+##### Transition
 
-**Signature:**
+By executing this step we are circling back to ["Opened stage"]((#opened-stage).
+
+##### Signature
 
 ```aiken
 pub fn do_add(
@@ -611,14 +622,16 @@ pub fn do_add(
 )
 ```
 
-**Spec:**
+##### Spec
 
 - Add.In : Input state
+
   - Add.In.0 : Keys `keys_in`
   - Add.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
   - Add.In.2 : Amount `tot_in`
 
 - Add.Out : Output state
+
   - Add.Out.0 : Keys `keys_in`
   - Add.Out.1 : `Opened(amt1_out, snapshot_out, period_out) = stage_out`
   - Add.Out.2 : Amount `tot_out`
@@ -635,11 +648,14 @@ pub fn do_add(
 
 #### Reduce cheques
 
-**Overview:**
+##### Overview
 
-In both subsequent sections we reference the `Reduce cheques` function. It verifies validity of the cheques provided as a part of the [`Receipt`](#receipt) and its correspondence to the [`Pend`](#pend) value which should remain as part of the L1 state after the reduction.
+In both subsequent sections we reference the `Reduce cheques` function. It
+verifies validity of the cheques provided as a part of the [`Receipt`](#receipt)
+and its correspondence to the [`Pend`](#pend) value which should remain as part
+of the L1 state after the reduction.
 
-**Signature:**
+##### Signature
 
 ```aiken
 fn reduce_cheques(
@@ -654,18 +670,20 @@ fn reduce_cheques(
 ) -> Amount
 ```
 
-**Spec:**
+##### Spec
 
 - ReduceCheques.Pre: `prev_chq_idx` initialized by `-1`
 
 - ReduceCheques.In : Input parameters
+
   - ReduceCheques.In.0 : The other party verification key `other`
   - ReduceCheques.In.1 : List of signed cheques `chq_idxs`
   - ReduceCheques.In.2 : Previous cheque index `prev_chq_idx`
   - ReduceCheques.In.3 : Max cheque index included in the squash `sq_idx`
   - ReduceCheques.In.4 : List of excluded indices from the squash `sq_excl`
   - ReduceCheques.In.5 : Expected pending cheque list after the reduction `pend`
-  - ReduceCheques.In.6 : A point in time "in the future" (transaction upper bound) `ub`
+  - ReduceCheques.In.6 : A point in time "in the future" (transaction upper
+    bound) `ub`
 
 - ReduceCheques.Out: Total amount of the reduced cheques
 
@@ -674,21 +692,22 @@ fn reduce_cheques(
   - ReduceCheques.Con.1 : `chq_idx > prev_chq_idx`
   - ReduceCheques.Con.2 : Cheques index is valid
     - ReduceCheques.Con.2.1 : Either `ch_idx > sq_idx`
-    - ReduceCheques.Con.2.2 : Or `chq_idx elem sq_excl` && all smaller idx from sq_excl are discarded
+    - ReduceCheques.Con.2.2 : Or `chq_idx elem sq_excl` && all smaller idx from
+      sq_excl are discarded
   - ReduceCheques.Con.3 : (Un)locked `cheque.timeout < ub`
-  - ReduceCheques.Con.4 : If `Htlc(_, timeout, lock, amt) = chq` then `pend.pop() == (amt, timeout, lock)`
+  - ReduceCheques.Con.4 : If `Htlc(_, timeout, lock, amt) = chq` then
+    `pend.pop() == (amt, timeout, lock)`
   - ReduceCheques.Con.5 : At the end of reduction `pend == []`
 
 #### Do close
 
-**Overview:**
+##### Overview
 
 No funds are removed.
 
 Regardless of how large or small the `ub` or `timeout` is, the non-closer has at
-least `respond_period` to perform a `respond`.
-If `timeout` is large, the closer is only postponing their ability to `elapse`
-the channel were they to need to.
+least `respond_period` to perform a `respond`. If `timeout` is large, the closer
+is only postponing their ability to `elapse` the channel were they to need to.
 
 The tx size is in part linear in the number of cheques. Both partners must
 ensure that the size of this transaction is sufficiently small to meet the L1 tx
@@ -696,9 +715,12 @@ limits. They must perform a `close` step before the number of cheques in their
 possession exceeds these limits. If they do not, they put only their own funds
 at risk - not their partners.
 
-**Transition:** By executing this step we are transitioning from [Opened stage](#opened-stage) to [Closed stage](#closed-stage).
+##### Transition
 
-**Signature:**
+By executing this step we are transitioning from ["Opened
+stage"]((#opened-stage) to ["Closed stage"]((#closed-stage).
+
+##### Signature
 
 ```aiken
 pub fn do_close(
@@ -715,53 +737,78 @@ pub fn do_close(
 ) -> Bool
 ```
 
-**Spec:**
+##### Spec
 
 - Close.In : Input state
+
   - Close.In.0 : Keys `keys_in`
   - Close.In.1 : `Opened(amt_in, snapshot_in, period_in) = stage_in`
   - Close.In.2 : Amount `tot_in`
 
 - Close.Out : Output state
+
   - Close.Out.0 : Keys `keys_out`
-  - Close.Out.1 : `Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`
+  - Close.Out.1 :
+    `Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`
   - Close.Out.2 : Amount `tot_out`
 
 - Close.Con : Constraints
+
   - Close.Con.0 : If tx signed by `vk0` then `keys_in == keys_out` else keys are
     swaped
-  - Close.Con.1 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
+  - Close.Con.1 : If no snapshot provided then `snapshot_out` equals
+    `snapshot_in`
 
   - Close.Con.2 : Else
+
     - Close.Con.2.0 : Snapshot signed by other key
     - Close.Con.2.1 : `snapshot_out` equals provided union `snapshot_in`
 
-  - Close.Con.3 : `ReduceCheck` succeeds with `chqs_amt` for the provided cheques and the `pend_out`
-  - Close.Con.4 : `amt_rec + chqs_amt + sq_diff == amt_out`
-                where
-                `amt_rec = tot_in - amt_in` if the closer is also the opener else `amt_rec = amt_in`
-                `sq_diff` is the difference of the squashes in the latest snapshot
+  - Close.Con.3 : `ReduceCheck` succeeds with `chqs_amt` for the provided
+    cheques and the `pend_out`
+  - Close.Con.4 : `amt_rec + chqs_amt + sq_diff == amt_out` where
+    `amt_rec = tot_in - amt_in` if the closer is also the opener else
+    `amt_rec = amt_in` `sq_diff` is the difference of the squashes in the latest
+    snapshot
   - Close.Con.5 : `sq_out == sq_sent`
   - Close.Con.6 : `timeout_out > ub + respond_period`
   - Close.Con.7 : `tot_out >= tot_in`
 
 #### Do respond
 
-**Overview:**
+##### Overview
 
-Both partners have now submitted their receipt as evidence of how much they are
-owed from their off-chain transacting.
+This step is executed by non-closer so both partners have now submitted their
+receipt as evidence of how much they are owed from their off-chain transacting.
+Here is simple depiction of the situation (of course specific ratios will be
+arbitrary):
 
-At this point the L1 has all the information as to how much both participants
-are eligible to claim from the channel.
+```txt
+[                                      total                                    ]
+[         closer      |         pend0    |     pend1   |    non-closer          ]
+[                    amt                 |       total - amount                 ]
+```
+
+At this point we have all the information as to how much both participants are
+eligible to claim from the channel:
+
+- We have information about both account's balances.
+- We have also information about possible liabilities from both sides.
+- Everyone's liability should be secured from its own account.
+- Given that in this step we should release non-closer's account taking into
+  account the amount of cheques that are still pending which were raised by him.
 
 As with a close the tx size is linear in the number of cheques. Both partners
 must ensure they would be able to `close` or `resolve` all their cheques,
 without hitting tx limits.
 
-**Transition:** By executing this step we are transitioning from [Closed stage](#closed-stage) to [Responded stage](#responded-stage).
+##### Transition
 
-**Signature:**
+By executing this step we are transitioning from ["Closed
+stage"]((#closed-stage) to ["Responded stage"]((#responded-stage).
+
+##### Signature
+
 ```
 pub fn do_respond(
   cid: t.ChannelId,
@@ -778,44 +825,56 @@ pub fn do_respond(
 ) -> Bool
 ```
 
-**Spec:**
+##### Spec
 
 The redeemer supplies the `(receipt, drop_old)`
 
 - Respond.In : Input state
+
   - Respond.In.0 : Keys `keys_in`
   - Respond.In.1 : `Closed(amt_in, sq_in, timeout_in, pend_in) = stage_in`"
   - Respond.In.2 : Amount `tot_in`
 
 - Respond.Out : Output state
+
   - Respond.Out.0 : Keys `keys_out`
   - Respond.Out.1 : `Responded(amt_out, pend0, pend1) = stage_out`
   - Respond.Out.2 : Amount `tot_out`
 
 - Respond.Con : Constraints
-  - Respond.Con.0 : `keys_in.1` has singed the tx - the step is executed by the non-closer
+
+  - Respond.Con.0 : `keys_in.1` has singed the tx - the step is executed by the
+    non-closer
   - Respond.Con.1 : `keys_in == keys_out`
   - Respond.Con.2 : Verify the receipt snapshot with `keys_in.0`
-  - Respond.Con.3 : `ReduceCheck` succeeds with `chqs_amt` for the receipt cheques and the `pend1`
+  - Respond.Con.3 : `ReduceCheck` succeeds with `chqs_amt` for the receipt
+    cheques and the `pend1`
 
-  - Respond.Con.4 : If new snapshot provided then `amt_out` is `amt_in - sq_diff - cheq_amt` where
-    - `sq_diff = sq_in - sq_received` where `sq_received` is the squash from the snapshot
-    - `cheq_amt` is the sum of not locked cheques in the receipt
-
+  - Respond.Con.4 : If new snapshot provided then `amt_out` is
+    `amt_in - sq_diff - chqs_amt` where `sq_diff = sq_in - sq_received` where
+    `sq_received` is the squash from the snapshot
   - Respond.Con.6 : Else `amt_out == amt_in`
-  - Respond.Con.7 : If `drop_old` then `pend0` is `pend_in` with entries in which the `timeout < lb` have been dropped. The total reflects this.
+  - Respond.Con.7 : If `drop_old` then `pend0` is `pend_in` with entries in
+    which the `timeout < lb` have been dropped. The total reflects this.
   - Respond.Con.8 : Else `pend0 == pend_in`
-  - Respond.Con.9 : `tot_out` is equal to `amt_out + sum(pend0) + sum(pend1)`
+  - Respond.Con.9 : `tot_out` is equal to `amt_out + sum(pend1)`
 
 #### Do elapse
 
-**Overview:**
+##### Overview
+
 The non-closer has failed to meet their obligation of providing their receipt.
 The closer may now release their funds.
 
-**Transition:** By executing this step we are transitioning from [Closed stage](#closed-stage) to [Resolved stage](#resolved-stage).
+For simplicity of the protocol we prevent closer from providing cheques owned by
+the non-closer. This approach may change in the future versions of the protocol.
 
-**Signature:**
+##### Transition
+
+By executing this step we are transitioning from ["Closed
+stage"]((#closed-stage) to ["Elapsed stage"](#elapsed-stage).
+
+##### Signature
 
 ```aiken
 pub fn do_elapse(
@@ -831,37 +890,108 @@ pub fn do_elapse(
 ) -> Bool
 ```
 
-**Spec:**
+##### Spec
 
 - Elapse.In : Input state
+
   - Elapse.In.0 : Keys `keys_in`
   - Elapse.In.1 : `Closed(amt_in, _, timeout_in, pend_in) = stage_in`
   - Elapse.In.2 : Amount `tot_in`
 
 - Elapse.Out : Output state
+
   - Elapse.Out.0 : Keys `keys_out` where `keys_out == keys_in`
-  - Elapse.Out.1 : `Resolved(pend0_out, pend1_out) = stage_out`
+  - Elapse.Out.1 : `Elapsed(pend) = stage_out`
   - Elapse.Out.2 : Amount `tot_out`
 
 - Elapse.Con : Constraints
   - Elapse.Con.0 : `keys_in.0` has signed the tx
   - Elapse.Con.1 : `timeout_in < lb` (respond period has passed)
-  - Elapse.Con.2 : `pend0_out` is reduced from `pend_in` using provided secrets and results in `amt_freed`
+  - Elapse.Con.2 : `pend` is reduced from `pend_in` using provided secrets and
+    results in `amt_freed`
   - Elapse.Con.3 : `tot_out == tot_in - amt_in - amt_freed`
-  - Elapse.Con.4 : `pend1_out == []`
 
+#### Do resolve
+
+##### Overview
+
+During this step we release the account funds locked by the partner which did
+not release them yet and we end up with a channel which secures funds for all
+the pending cheques. In the current version of the protocol we assume that the
+closer pending cheques should be empty when we transition from
+["Elapsed stage"](#elapsed-stage).
+
+##### Transition
+
+By executing this step we are transitioning from
+["Elapsed stage"](#elapsed-stage) to ["Resolved stage"](#resolved-stage).
+
+##### Signature
+
+```aiken
+pub fn do_resolve(
+  signers: List<VerificationKeyHash>,
+  lb: PosixMilliseconds,
+  secrets: t.Secrets,
+  drop_old: Bool,
+  keys_in: t.Keys,
+  stage_in: t.Stage,
+  tot_out: Amount,
+  keys_out: t.Keys,
+  stage_out: t.Stage,
+)
+```
+
+##### Spec
+
+- Resolve.In : Input state
+
+  - Resolve.In.0 : Keys `keys_in`
+  - Resolve.In.1 : Stage `stage_in`
+  - Resolve.In.2 : Amount `tot_in`
+
+- Resolve.Out : Output state
+
+  - Resolve.Out.0 : Keys `keys_out`
+  - Resolve.Out.1 : `Resolved(pend0_out, pend1_out) = stage_out`
+  - Resolve.Out.2 : Amount `tot_out`
+
+- Resolve.Con : Constraints
+
+  - Resolve.Con.0 : `keys_in == keys_out`
+
+  - Resolve.Con.1 : When `stage_in` is `Elapsed(pend_in)`
+
+    - Resolve.Con.1.1 : `keys_in.1` has signed the tx
+    - Resolve.Con.1.2 : If `drop_old` then `pend0_out` is `pend_in` with entries
+      in which the `timeout < lb` have been dropped.
+    - Resolve.Con.1.3 : Else `pend0_out == pend_in`
+    - Resolve.Con.1.4 : `pend1_out == []`
+
+  - Resolve.Con.2 : When `stage_in` is `Responded(amt_in, pend0_in, pend1_in)`
+
+    - Resolve.Con.2.0 : `keys_in.0` has signed the tx
+    - Resolve.Con.2.1 : `pend0_out` is `pend0_in` reduced by secrets
+    - Resolve.Con.2.2 : If `drop_old` then `pend1_out` is reduced by timeout
+      from `pend1_in` by `timeout < lb` resulting in `sent_freed`
+    - Resolve.Con.2.3 : Else `pend1_out == pend1_in`
+
+  - Resolve.Con.3 : `tot_out == sum(pend0_out) + sum(pend1_out)`
 
 #### Do free
 
-**Overview:**
+##### Overview
 
-Only the closer can `free` in the stages `Closed`. Only the
-responder (non-closer) can `free` in the stage `Responded`. Both partners can
-`free` in the `Resolved`.
+Only the closer can `free` in the stages `Closed`. Only the responder
+(non-closer) can `free` in the stage `Responded`. Both partners can `free` in
+the `Resolved`.
 
-**Transition:** By executing this step we are looping in multiple stages: [Closed stage](#closed-stage), [Responded stage](#responded-stage), [Resolved stage](#resolved-stage).
+##### Transition
 
-**Signature:**
+By executing this step we are looping in multiple stages: ["Closed
+stage"]((#closed-stage), ["Responded stage"]((#responded-stage), ["Resolved stage"]((#resolved-stage).
+
+##### Signature
 
 ```aiken
 pub fn do_free(
@@ -878,24 +1008,32 @@ pub fn do_free(
 ) -> Bool
 ```
 
-**Spec:**
+##### Spec
 
 - Free.In : Input state
+
   - Free.In.0 : Keys `keys_in`
   - Free.In.1 : Stage `stage_in`
   - Free.In.2 : Amount `tot_in`
 
 - Free.Out : Output state
+
   - Free.Out.0 : Keys `keys_out`
   - Free.Out.1 : Stage `stage_out`
   - Free.Out.2 : Amount `tot_out`
 
 - Free.Con : Constraints
+
   - Free.Con.0 : `keys_in == keys_out`
-  - Free.Con.1 : When `stage_in` is `Closed(amt_in, squash_in, timeout_in, pend_in)`
+
+  - Free.Con.1 : When `stage_in` is
+    `Closed(amt_in, squash_in, timeout_in, pend_in)`
+
     - Free.Con.1.0 : `keys_in.0` has signed the tx
-    - Free.Con.1.1 : `Close(amt_out, squash_out, timeout_out, pend_out) = stage_out`
-    - Free.Con.1.2 : `pend_out` is reduced from `pend_in` using provided secrets and results in `amt_freed`
+    - Free.Con.1.1 :
+      `Close(amt_out, squash_out, timeout_out, pend_out) = stage_out`
+    - Free.Con.1.2 : `pend_out` is reduced from `pend_in` using provided secrets
+      and results in `amt_freed`
     - Free.Con.1.3 : `amt_freed != 0` to prevent noop looping
     - Free.Con.1.4 : `amt_out == amt_in + amt_freed`
     - Free.Con.1.5 : `squash_out == squash_in`
@@ -903,40 +1041,69 @@ pub fn do_free(
     - Free.Con.1.7 : `tot_out == tot_in`
 
   - Free.Con.2 : When `stage_in` is `Responded(amt_in, pend0_in, pend1_in)`
+
     - Free.Con.2.0 : `keys_in.1` has signed the tx
     - Free.Con.2.1 : `Responded(amt_out, pend0_out, pend1_out) = stage_out`
     - Free.Con.2.2 : `amt_in == amt_out`
-    - Free.Con.2.3 : `pend1_out` is reduced from `pend1_in` using provided secrets and results in `received_freed`
-    - Free.Con.2.4 : If `drop_old` then `pend0_out` is reduced by timeout from `pend0_in` by `timeout < lb` resulting in `sent_freed`
+    - Free.Con.2.3 : `pend1_out` is reduced from `pend1_in` using provided
+      secrets and results in `received_freed`
+    - Free.Con.2.4 : If `drop_old` then `pend0_out` is reduced by timeout from
+      `pend0_in` by `timeout < lb` resulting in `sent_freed`
     - Free.Con.2.5 : Else `pend0_out == pend0_in`
-    - Free.Con.2.6 : `amt_freed == received_freed + sent_freed` and `amt_freed != 0` to prevent noop looping
+    - Free.Con.2.6 : `amt_freed == received_freed + sent_freed` and
+      `amt_freed != 0` to prevent noop looping
     - Free.Con.2.7 : `tot_out == tot_in - amt_freed`
 
-  - Free.Con.3 : When `stage_in` is `Resolved(pend0_in, pend1_in)`
-    - Free.Con.3.0 : `Resolved(pend0_out, pend1_out) = stage_out`
+  - Free.Con.3 : When `stage_in` is `Elapsed(pend)`
 
-    - Free.Con.3.1 : If signed by `keys_in.0` then:
-      - Free.Con.3.1.0 : `pend0_out` is `pend0_in` reduced with secrets and results in `received_freed`
-      - Free.Con.3.1.1 : If `drop_old` then `pend1_out` is `pend1_in reduced by `timeout < lb` resulting in `sent_freed`
-      - Free.Con.3.1.2 : Else `pend1_out == pend1_in`
-      - Free.Con.3.1.3 : `amt_freed == received_freed + sent_freed` and `amt_freed != 0` to prevent noop looping
-      - Free.Con.3.1.4 : `tot_out == tot_in - amt_freed`
+    - Free.Con.3.0 : `keys_in.0` has signed the tx
+    - Free.Con.3.1 : `Elapsed(pend_out) = stage_out`
+    - Free.Con.3.2 : `pend_out` is reduced from `pend` using provided secrets
+      and results in `amt_freed`
+    - Free.Con.3.3 : `amt_freed != 0` to prevent noop looping
+    - Free.Con.3.4 : `tot_out == tot_in - amt_freed`
 
-    - Free.Con.3.2 : If signed by `keys_in.1` then (Same as above but with pend indices switched)
-      - Free.Con.3.2.0 : `pend1_out` is `pend1_in` reduced with secrets and results in `received_freed`
-      - Free.Con.3.2.1: If `drop_old` then `pend0_out` is `pend0_in reduced by `timeout < lb`
-      - Free.Con.3.2.2 : Else `pend0_out == pend0_in`
-      - Free.Con.3.2.3 : `tot_out == sum(pend0_out) + sum(pend1_out)` so locked assets are possibly released
-      - Free.Con.3.2.4 : `tot_out != tot_in` to prevent noop looping
+  - Free.Con.4 : When `stage_in` is `Resolved(pend0_in, pend1_in)`
+
+    - Free.Con.4.0 : `Resolved(pend0_out, pend1_out) = stage_out`
+
+    - Free.Con.4.1 : If signed by `keys_in.0` then:
+
+      - Free.Con.4.1.0 : `pend0_out` is `pend0_in` reduced with secrets and
+        results in `received_freed`
+      - Free.Con.4.1.1 : If `drop_old` then `pend1_out` is
+        `pend1_in reduced by `timeout < lb`resulting in`sent_freed`
+      - Free.Con.4.1.2 : Else `pend1_out == pend1_in`
+      - Free.Con.4.1.3 : `amt_freed == received_freed + sent_freed` and
+        `amt_freed != 0` to prevent noop looping
+      - Free.Con.4.1.4 : `tot_out == tot_in - amt_freed`
+
+    - Free.Con.4.2 : If signed by `keys_in.1` then (Same as above but with pend
+      indices switched)
+      - Free.Con.4.2.0 : `pend1_out` is `pend1_in` reduced with secrets and
+        results in `received_freed`
+      - Free.Con.4.2.1: If `drop_old` then `pend0_out` is
+        `pend0_in reduced by `timeout < lb`
+      - Free.Con.4.2.2 : Else `pend0_out == pend0_in`
+      - Free.Con.4.2.3 : `tot_out == sum(pend0_out) + sum(pend1_out)` so locked
+        assets are possibly released
+      - Free.Con.4.2.4 : `tot_out != tot_in` to prevent noop looping
 
 #### Do end
 
-**Overview:**
-The party which executes last pending cheques resolution round unstages the channel. Please note that the protocol does not protect the `min UTxO` locked by the UTxO itself and it is released during this step. This will be addressed in the future.
+##### Overview
 
-**Transition:** By executing this step we are unstaging the channel from [Resolved stage](#resolved-stage) or [Responded stage](#responded-stage).
+The party which executes last pending cheques resolution round unstages the
+channel. Please note that the protocol does not protect the `min UTxO` locked by
+the UTxO itself and it is released during this step. This will be addressed in
+the future.
 
-**Signature:**
+##### Transition
+
+By executing this step we are unstaging the channel from ["Resolved
+stage"]((#resolved-stage) or ["Responded stage"]((#responded-stage).
+
+##### Signature
 
 ```aiken
 pub fn do_end(
@@ -949,32 +1116,42 @@ pub fn do_end(
 ) -> Bool
 ```
 
-**Spec:**
+##### Spec
 
 - End.In : Input state
+
   - End.In.0 : Keys `keys_in`
   - End.In.1 : Stage `stage_in`
   - End.In.2 : Amount `tot_in`
 
 - End.Out : Output state
+
   - End.Out.0 : No continuing output (channel is ended)
 
 - End.Con : Constraints by stage
+
   - End.Con.0 : When `stage_in` is `Responded(amt, pend0, pend1)`
+
     - End.Con.0.0 : `keys_in.0` has signed the tx
     - End.Con.0.1: `pend1` reduced by `timeout < lb` is empty
-    - End.Con.0.2 : All pending cheques in `pend0` are unlocked with provided secrets
+    - End.Con.0.2 : All pending cheques in `pend0` are unlocked with provided
+      secrets
 
   - End.Con.1 : When stage is `Resolved(pend0, pend1)`
+
     - End.Con.1.0 : If signed by `keys_in.0`:
-      - End.Con.1.0.0 : `pend1` reduced by `timeout < lb` is empty and results in `received_freed`
-      - End.Con.1.0.1 : All pending cheques in `pend0` are unlocked with provided secrets and results in `sent_freed`
-      - End.Con.1.0.2 : `tot_in == received_freed + sent_freed` so non-closer locked assets are protected
+
+      - End.Con.1.0.0 : `pend1` reduced by `timeout < lb` is empty and results
+        in `received_freed`
+      - End.Con.1.0.1 : All pending cheques in `pend0` are unlocked with
+        provided secrets and results in `sent_freed`
+      - End.Con.1.0.2 : `tot_in == received_freed + sent_freed` so non-closer
+        locked assets are protected
 
     - End.Con.1.1 : If signed by `keys_in.1`:
       - End.Con.1.1.0 : `pend0` reduced by `timeout < lb` is empty
-      - End.Con.1.1.1 : All pending cheques in `pend1` are unlocked with provided secrets
-
+      - End.Con.1.1.1 : All pending cheques in `pend1` are unlocked with
+        provided secrets
 
 ### Validator
 
@@ -1030,8 +1207,12 @@ those belonging to the script.
 
 ##### Reduce
 
+##### Overview
+
 The processing of steps is effectively performing a reduce on the `steps` and
 `tx.inputs`.
+
+##### Signature
 
 ```
 fn reduce(
@@ -1045,6 +1226,8 @@ fn reduce(
   outputs : List<Output>
 )
 ```
+
+##### Spec
 
 - When `steps` is:
   - `[]` then finalize:
