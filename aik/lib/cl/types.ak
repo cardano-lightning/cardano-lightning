@@ -47,6 +47,7 @@ pub type Stage {
   Opened(Amount, Snapshot, Period)
   Closed(Amount, Squash, Timeout, Pend)
   Responded(Amount, Pend, Pend)
+  Elapsed(Pend)
   Resolved(Pend, Pend)
 }
 
@@ -68,11 +69,18 @@ pub type NStep {
   End(Secrets)
 }
 
+// This is a slight optimization to avoid
+// iteration over `sent` cheques to
+// release expired ones.
+// Sometimes this flag is just ignored.
+pub type DropOld =
+  Bool
+
 pub type CStep {
   Add(Option<Signed<Snapshot>>)
   Close(Receipt)
-  Respond(Receipt, Bool)
-  Resolve(Secrets)
+  Respond(Receipt, DropOld)
+  Resolve(Secrets, DropOld)
   Elapse(Secrets)
-  Free(Secrets, Bool)
+  Free(Secrets, DropOld)
 }

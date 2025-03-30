@@ -396,10 +396,11 @@ pub fn do_respond(
     trace @"Respond.Con.8": @"Else `pend0 == pend`"
     expect pend0 == pend_in
   }
-  trace @"Respond.Con.9": @"`tot_out` is equal to `amt_out + sum(pend0) + sum(pend1)`"
-  tot_out == amt_out + sum_pend(pend0) + sum_pend(pend1)
+  trace @"Respond.Con.9": @"`tot_out` is equal to `amt_out + sum(pend1)`"
+  tot_out == amt_out + sum_pend(pend1)
 }
 
+// We separated this helper so we can track `curr_idx` on the `pend_in` list.
 fn do_reduce_pend(
   curr_idx: Int,
   pend_in: t.Pend,
@@ -467,10 +468,12 @@ fn reduce_pend_by_timeout(
       [(amt_out, timeout_out, lock_out), ..rest_out],
     ) ->
       if timeout_in < lb {
-        // Timeout has passed - skip this entry in output and add amount to total
-        amt_in + reduce_pend_by_timeout(rest_in, rest_out, lb)
+        // Timeout has passed - skip this entry in the output.
+        // Add its amount to the released amount.
+        amt_in + reduce_pend_by_timeout(rest_in, pend_out, lb)
       } else {
-        // Timeout has not passed - keep entry in output
+        // Timeout has not passed - keep entry in the output
+        // checking if it is honestly preserved
         expect
           amt_in == amt_out && timeout_in == timeout_out && lock_in == lock_out
         reduce_pend_by_timeout(rest_in, rest_out, lb)
@@ -499,11 +502,11 @@ pub fn do_elapse(
   trace @"Elapse.Out": @"Output state"
   trace @"Elapse.Out.0": @"Keys `keys_out`"
   expect keys_out == keys_in
-  trace @"Elapse.Out.1": @"`Resolved(pend0_out, pend1_out) = stage_out`"
+  trace @"Elapse.Out.1": @"`Resolved(pend) = stage_out`"
   // There is no checking of the other partner's pend here - `pend1`.
   // That decision is in the hands of the closer if they
   // want to drop partner's cheques if any.
-  expect t.Resolved(pend0_out, pend1_out) = stage_out
+  expect t.Elapsed(pend) = stage_out
   // Provided by the caller
   trace @"Elapse.Out.2": @"Amount `tot_out`"
 
@@ -514,14 +517,83 @@ pub fn do_elapse(
   trace @"Elapse.Con.1": @"`timeout_in < lb` (respond period has passed)"
   expect timeout_in < lb
 
-  trace @"Elapse.Con.2": @"`pend0_out` is reduced from `pend_in` using provided secrets and results in `amt_freed`"
-  let amt_freed = reduce_pend(pend_in, pend0_out, secrets, lb)
+  trace @"Elapse.Con.2": @"`pend` is reduced from `pend_in` using provided secrets and results in `amt_freed`"
+  let amt_freed = reduce_pend(pend_in, pend, secrets, lb)
 
   trace @"Elapse.Con.3": @"`tot_out == tot_in - amt_in - amt_freed`"
-  expect tot_out == tot_in - amt_in - amt_freed
+  tot_out == tot_in - amt_in - amt_freed
+}
 
-  trace @"Elapse.Con.4": @"`pend1_out == []`"
-  pend1_out == []
+pub fn do_resolve(
+  signers: List<VerificationKeyHash>,
+  lb: PosixMilliseconds,
+  secrets: t.Secrets,
+  drop_old: Bool,
+  keys_in: t.Keys,
+  stage_in: t.Stage,
+  tot_out: Amount,
+  keys_out: t.Keys,
+  stage_out: t.Stage,
+) -> Bool {
+  trace @"Resolve.In": @"Input state"
+  trace @"Resolve.In.0": @"Keys `keys_in`"
+  trace @"Resolve.In.1": @"Stage `stage_in`"
+  trace @"Resolve.In.2": @"Amount `tot_in`"
+
+  trace @"Resolve.Out": @"Output state"
+  trace @"Resolve.Out.0": @"Keys `keys_out`"
+
+  trace @"Resolve.Out.1": @"`Resolved(pend0_out, pend1_out) = stage_out`"
+  expect t.Resolved(pend0_out, pend1_out) = stage_out
+
+  trace @"Resolve.Out.2": @"Amount `tot_out`"
+
+  trace @"Resolve.Con": @"Constraints"
+
+  trace @"Resolve.Con.0": @"`keys_in == keys_out`"
+  expect keys_in == keys_out
+
+  when stage_in is {
+    t.Elapsed(pend_in) -> {
+      trace @"Resolve.Con.1": @"When `stage_in` is Elapsed(pend_in)"
+      trace @"Resolve.Con.1.0": @"`keys_in.1` has signed the tx"
+      expect has_vk1(keys_in, signers)
+
+      if drop_old {
+        trace @"Resolve.Con.1.1": @"If `drop_old` then `pend0_out` is `pend_in` with entries in which the `timeout < lb` have been dropped"
+        expect pend0_out == list.filter(pend_in, fn(p) { p.2nd < lb })
+      } else {
+        trace @"Resolve.Con.1.2": @"Else `pend0_out == pend_in`"
+        expect pend0_out == pend_in
+      }
+      trace @"Resolve.Con.1.3": @"`pend1_out == []`"
+      expect pend1_out == []
+    }
+    t.Responded(_, pend0_in, pend1_in) -> {
+      trace @"Resolve.Con.2": @"When `stage_in` is Responded(amt_in, pend0_in, pend1_in)"
+      trace @"Resolve.Con.2.0": @"`keys_in.0` has signed the tx"
+      expect has_vk0(keys_in, signers)
+
+      trace @"Resolve.Con.2.1": @"`pend0_out` is `pend0_in` reduced by secrets"
+      let received_freed = reduce_pend(pend0_in, pend0_out, secrets, lb)
+
+      let sent_freed =
+        if drop_old {
+          trace @"Resolve.Con.2.2": @"If `drop_old` then `pend1_out` is reduced by timeout from `pend1_in` by `timeout < lb` resulting in `sent_freed`"
+          reduce_pend_by_timeout(pend1_in, pend1_out, lb)
+        } else {
+          trace @"Resolve.Con.2.3": @"Else `pend1_out == pend1_in`"
+          expect pend1_out == pend1_in
+          0
+        }
+      // TODO: Tautology to preserve the above side effecting evaluations - is this necessary?
+      let amt_freed = received_freed + sent_freed
+      expect amt_freed != 0 || amt_freed == 0
+    }
+    _ -> fail @"Invalid stage for the `resolve` step"
+  }
+  trace @"Resolve.Con.2.4": @"`tot_out == sum(pend0_out) + sum(pend1_out)`"
+  tot_out == sum_pend(pend0_out) + sum_pend(pend1_out)
 }
 
 pub fn do_free(
@@ -609,6 +681,23 @@ pub fn do_free(
       trace @"Free.Con.2.7": @"`tot_out == tot_in - amt_freed`"
       tot_out == tot_in - amt_freed
     }
+    t.Elapsed(pend) -> {
+      trace @"Free.Con.3": @"When `stage_in` is Elapsed(pend)"
+      trace @"Free.Con.3.0": @"`keys_in.0` has signed the tx"
+      expect has_vk0(keys_in, signers)
+
+      trace @"Free.Con.3.1": @"`Elapsed(pend_out) = stage_out`"
+      expect t.Elapsed(pend_out) = stage_out
+
+      trace @"Free.Con.3.2": @"`pend_out` is reduced from `pend` using provided secrets and results in `amt_freed`"
+      let amt_freed = reduce_pend(pend, pend_out, secrets, lb)
+
+      trace @"Free.Con.3.3": @"`amt_freed != 0` to prevent noop looping"
+      expect amt_freed != 0
+
+      trace @"Free.Con.3.4": @"`tot_out == tot_in - amt_freed`"
+      tot_out == tot_in - amt_freed
+    }
     t.Resolved(pend0_in, pend1_in) -> {
       trace @"Free.Con.3": @"When `stage_in` is Resolved(pend0_in, pend1_in)"
       trace @"Free.Con.3.0": @"`Resolved(pend0_out, pend1_out) = stage_out`"
@@ -629,24 +718,24 @@ pub fn do_free(
             0
           }
 
-        trace @"Free.Con.3.1.3": @"`amt_freed == received_freed + sent_freed` to prevent noop looping"
+        trace @"Free.Con.4.1.3": @"`amt_freed == received_freed + sent_freed` to prevent noop looping"
         let amt_freed = received_freed + sent_freed
         expect amt_freed != 0
 
-        trace @"Free.Con.3.1.4": @"`tot_out == tot_in - amt_freed"
+        trace @"Free.Con.4.1.4": @"`tot_out == tot_in - amt_freed"
         tot_out == tot_in - amt_freed
       } else {
-        trace @"Free.Con.3.2": @"If signed by `keys_in.1`"
+        trace @"Free.Con.4.2": @"If signed by `keys_in.1`"
 
-        trace @"Free.Con.3.2.0": @"`pend1_out` is `pend1_in` reduced with secrets and results in `received_freed`"
+        trace @"Free.Con.4.2.0": @"`pend1_out` is `pend1_in` reduced with secrets and results in `received_freed`"
         let received_freed = reduce_pend(pend1_in, pend1_out, secrets, lb)
 
         let sent_freed =
           if drop_old {
-            trace @"Free.Con.3.2.1": @"If `drop_old` then `pend0_out` is `pend0_in reduced by `timeout < lb` resulting in `sent_freed`"
+            trace @"Free.Con.4.2.1": @"If `drop_old` then `pend0_out` is `pend0_in reduced by `timeout < lb` resulting in `sent_freed`"
             reduce_pend_by_timeout(pend0_in, pend0_out, lb)
           } else {
-            trace @"Free.Con.3.2.2": @"Else `pend0_out == pend0_in`"
+            trace @"Free.Con.4.2.2": @"Else `pend0_out == pend0_in`"
             expect pend0_out == pend0_in
             0
           }
@@ -655,10 +744,10 @@ pub fn do_free(
         let amt_freed = sent_freed + received_freed
         expect amt_freed != 0 || amt_freed == 0
 
-        trace @"Free.Con.3.2.3": @"`tot_out == sum(pend0_out) + sum(pend1_out)` so locked assets are possibly released"
+        trace @"Free.Con.4.2.3": @"`tot_out == sum(pend0_out) + sum(pend1_out)` so locked assets are possibly released"
         expect tot_out == sum_pend(pend0_out) + sum_pend(pend1_out)
 
-        trace @"Free.Con.3.2.4": @"`tot_out != tot_in` to prevent noop looping"
+        trace @"Free.Con.4.2.4": @"`tot_out != tot_in` to prevent noop looping"
         tot_out != tot_in
       }
     }

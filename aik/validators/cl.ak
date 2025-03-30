@@ -9,7 +9,9 @@ use cardano/transaction.{
 }
 use cl/channel
 use cl/prelude.{Amount, PosixMilliseconds}
-use cl/step.{do_add, do_close, do_elapse, do_end, do_free, do_respond}
+use cl/step.{
+  do_add, do_close, do_elapse, do_end, do_free, do_resolve, do_respond,
+}
 use cl/token
 use cl/types as t
 use env
@@ -145,12 +147,6 @@ fn reduce(
                     address_in,
                     non_new_channel_outs,
                   )
-                // Add(Option<Signed<Snapshot>>)
-                // Close(Receipt)
-                // Elapse(Secrets)
-                // Free(Secrets, Bool)
-                // Resolve(Secrets)
-                // Respond(Receipt, Bool)
                 expect
                   when cstep is {
                     t.Add(add) ->
@@ -203,6 +199,18 @@ fn reduce(
                         keys_out,
                         stage_out,
                       )
+                    t.Resolve(secrets, drop_old) ->
+                      do_resolve(
+                        signers,
+                        lower_bound(validity_range),
+                        secrets,
+                        drop_old,
+                        keys_in,
+                        stage_in,
+                        tot_out,
+                        keys_out,
+                        stage_out,
+                      )
                     t.Respond(receipt, drop_old) ->
                       do_respond(
                         cid,
@@ -217,7 +225,6 @@ fn reduce(
                         keys_out,
                         stage_out,
                       )
-                    _ -> fail @"not yet implemented"
                   }
                 reduce(
                   own_hash,
