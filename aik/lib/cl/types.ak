@@ -58,23 +58,23 @@ pub type SpendRedeemer {
   DeferToMint
 }
 
-pub type MintRedeemer =
-  (Option<OutputReference>, List<NStep>)
-
 pub type Secrets =
   List<(Index, HtlcSecret)>
+
+// This is a slight optimization to avoid
+// iteration over `sent` cheques to
+// release expired ones.
+// This flag is just ignored by some steps.
+pub type DropOld =
+  Bool
+
+pub type MintRedeemer =
+  (Option<OutputReference>, List<NStep>)
 
 pub type NStep {
   Continuing(CStep)
   End(Secrets)
 }
-
-// This is a slight optimization to avoid
-// iteration over `sent` cheques to
-// release expired ones.
-// Sometimes this flag is just ignored.
-pub type DropOld =
-  Bool
 
 pub type CStep {
   Add(Option<Signed<Snapshot>>)

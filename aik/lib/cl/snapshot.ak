@@ -1,7 +1,8 @@
 use aiken/cbor as cbor
 use aiken/collection/list
-use aiken/crypto.{Signature, VerificationKey, verify_ed25519_signature}
+use aiken/crypto.{Signature, VerificationKey}
 use cl/types as t
+use env
 
 pub fn max(sq0: t.Squash, sq1: t.Squash) -> t.Squash {
   let (amt0, idx0, exc0) = sq0
@@ -34,5 +35,5 @@ pub fn verify(
   sig: Signature,
 ) -> Bool {
   let msg = cbor.serialise((channel_id, snapshot))
-  verify_ed25519_signature(vk, msg, sig)
+  env.verify_ed25519_signature(vk, msg, sig)
 }

@@ -1,9 +1,7 @@
 use aiken/cbor as cbor
-use aiken/crypto.{
-  Signature, VerificationKey, blake2b_256, sha2_256, sha3_256,
-  verify_ed25519_signature,
-}
+use aiken/crypto.{Signature, VerificationKey, blake2b_256, sha2_256, sha3_256}
 use cl/types as t
+use env
 
 pub fn hash_htlc_secret(secret: t.HtlcSecret) -> t.HtlcLock {
   when secret is {
@@ -29,5 +27,5 @@ pub fn verify(
         cbor.serialise((channel_id, (index, timeout, lock, amount)))
       }
     }
-  verify_ed25519_signature(vk, msg, sig)
+  env.verify_ed25519_signature(vk, msg, sig)
 }
