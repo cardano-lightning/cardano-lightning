@@ -33,7 +33,19 @@ pub fn many_of(num: Int, elems: List<a>) -> Fuzzer<List<a>> {
   }
 }
 
+// This is unsafe as `fuzz.pick` itself is unsafe
 pub fn pick_elem(elems: List<a>) -> Fuzzer<a> {
   let (_, elem) <- and_then(fuzz.pick(elems))
   fuzz.constant(elem)
+}
+
+// This gives you hopefully a subset of `elems`.
+// The size of the set can be between 0 and `length`.
+pub fn pick_subset(_elems: List<a>, _desired_length: Int) -> Fuzzer<List<a>> {
+  fuzz.constant([])
+  // if list.length(elems) == 0 {
+  //   fuzz.constant([])
+  // } else {
+  //   fuzz.set_between(pick_elem(elems), 0, desired_length)
+  // }
 }
