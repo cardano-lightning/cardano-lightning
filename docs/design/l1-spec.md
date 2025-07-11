@@ -634,19 +634,19 @@ pub fn do_add(
 - Add.In : Input state
 
   - Add.In.0 : Keys `keys_in`
-  - Add.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
+  - Add.In.1 : `Opened(amt_in, snapshot_in, period_in) = stage_in`
   - Add.In.2 : Amount `tot_in`
 
 - Add.Out : Output state
 
   - Add.Out.0 : Keys `keys_in`
-  - Add.Out.1 : `Opened(amt1_out, snapshot_out, period_out) = stage_out`
+  - Add.Out.1 : `Opened(amt_out, snapshot_out, period_out) = stage_out`
   - Add.Out.2 : Amount `tot_out`
 
 - Add.Con : Constraints
   - Add.Con.0 : Total amount has increased by `x = tot_out - tot_in`, `x > 0`
-  - Add.Con.1 : If tx signed by `vk0` then `amt1_in == amt1_out` else
-    `amt1_in + x == amt1_out`
+  - Add.Con.1 : If tx signed by `vk0` then `amt_in == amt_out` else
+    `amt_in + x == amt_out`
   - Add.Con.2 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
   - Add.Con.3 : Else
     - Add.Con.3.0 : Snapshot signed by `other`
@@ -701,7 +701,7 @@ fn reduce_cheques(
     - ReduceCheques.Con.2.1 : Either `ch_idx > sq_idx`
     - ReduceCheques.Con.2.2 : Or `chq_idx elem sq_excl` && all smaller idx from
       sq_excl are discarded
-  - ReduceCheques.Con.3 : (Un)locked `cheque.timeout < ub`
+  - ReduceCheques.Con.3 : (Un)locked `cheque.timeout > ub`
   - ReduceCheques.Con.4 : If `Htlc(_, timeout, lock, amt) = chq` then
     `pend.pop() == (amt, timeout, lock)`
   - ReduceCheques.Con.5 : At the end of reduction `pend == []`
@@ -749,7 +749,7 @@ pub fn do_close(
 - Close.In : Input state
 
   - Close.In.0 : Keys `keys_in`
-  - Close.In.1 : `Opened(amt_in, snapshot_in, period_in) = stage_in`
+  - Close.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
   - Close.In.2 : Amount `tot_in`
 
 - Close.Out : Output state
@@ -773,9 +773,9 @@ pub fn do_close(
 
   - Close.Con.3 : `ReduceCheck` succeeds with `chqs_amt` for the provided
     cheques and the `pend_out`
-  - Close.Con.4 : `amt_rec + chqs_amt + sq_diff == amt_out` where
-    `amt_rec = tot_in - amt_in` if the closer is also the opener else
-    `amt_rec = amt_in` `sq_diff` is the difference of the squashes in the latest
+  - Close.Con.4 : `amt_in + chqs_amt + sq_diff == amt_out` where
+    `amt_in = tot_in - amt1_in` if the closer is also the opener else
+    `amt_in = amt1_in` `sq_diff` is the difference of the squashes in the latest
     snapshot
   - Close.Con.5 : `sq_out == sq_sent`
   - Close.Con.6 : `timeout_out > ub + respond_period`

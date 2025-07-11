@@ -20,3 +20,4 @@ pub type Bytes32 =
 
 pub type Signed<t> =
   (t, Signature)
+

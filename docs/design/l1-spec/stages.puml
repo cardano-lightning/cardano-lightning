@@ -58,17 +58,17 @@ note on link
 end note
 
 Responded --u-> Responded : <b>free</b>\nby non-closer
-Responded --d-> Resolved : <b>resolve</b>\nby closer
+Responded --d-> Resolved : <b>Resolve</b>(Secrets, DropOld)\nby closer
 note on link
-  * Releases account assets.
+  * Releases account assets leaving coverage for liabilities.
 end note
 Responded --> [*] : <b>end</b>\nby closer
 
 Elapsed --u-> Elapsed : <b>free</b>\nby closer
 Elapsed --d-> Resolved : <b>resolve</b>\nby non-closer
 note on link
-  * Releases account assets.
-  * Non-closer `Pend` is empty.
+  * Releases account assets but covering his liabilities.
+  * Non-closer `Pend` is empty - we ignored them during `elapse`.
 end note
 Elapsed --d-> [*] : <b>end</b>
 note on link
@@ -80,3 +80,13 @@ Resolved --u-> Resolved : <b>free</b>
 Resolved --> [*] : <b>end</b>
 
 @enduml
+
+
+// pub type CStep {
+//   Add(Option<Signed<Snapshot>>)
+//   Close(Receipt)
+//   Respond(Receipt, DropOld)
+//   Resolve(Secrets, DropOld)
+//   Elapse(Secrets)
+//   Free(Secrets, DropOld)
+// }

@@ -176,8 +176,8 @@ fn reduce_cheques(
         t.HtlcUnlocked(idx, timeout, _secret, amt) -> {
           let sq_excl_rest =
             verify_cheque_idx(prev_cheque_idx, idx, sq_idx, sq_excl)
-          trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout < ub`"
-          expect timeout < ub
+          trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout > ub`"
+          expect timeout > ub
           trace @"ReduceCheques.Out": @"Total amount of the reduced cheques"
           amt + reduce_cheques(
             cid,
@@ -193,8 +193,8 @@ fn reduce_cheques(
         t.Htlc(idx, timeout, lock, amt) -> {
           let sq_excl_rest =
             verify_cheque_idx(prev_cheque_idx, idx, sq_idx, sq_excl)
-          trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout < ub`"
-          expect timeout < ub
+          trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout > ub`"
+          expect timeout > ub
           trace @"ReduceCheques.Con.4": @"If `Htlc(_, timeout, lock, amt) = chq` then `pend.pop() == (amt, timeout, lock)`"
           expect [p, ..pend_rest] = pend
           expect (amt, timeout, lock) == p
@@ -246,14 +246,14 @@ pub fn do_close(
 ) -> Bool {
   trace @"Close.In": @"Input state"
   trace @"Close.In.0": @"Keys `keys_in`"
-  trace @"Close.In.1": @"`Opened(amt_in, snapshot_in, respond_period) = stage_in`"
+  trace @"Close.In.1": @"`Opened(amt1_in, snapshot_in, respond_period) = stage_in`"
   trace @"Close.In.2": @"Amount `tot_in`"
-  expect t.Opened(amt_in, snapshot_in, respond_period) = stage_in
+  expect t.Opened(amt1_in, snapshot_in, respond_period) = stage_in
 
   trace @"Close.Out": @"Output state"
   trace @"Close.Out.0": @"Keys `keys_out`"
-  trace @"Close.Out.1": @"`Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`"
-  expect t.Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out
+  trace @"Close.Out.1": @"`Closed(amt0_out, squash_out, timeout_out, pend_out) = stage_out`"
+  expect t.Closed(amt0_out, squash_out, timeout_out, pend_out) = stage_out
   trace @"Close.Out.2": @"Amount `tot_out`"
   let (self, other) = self_and_other_keys(keys_in, signers)
   let is_vk0 = self == keys_in.1st
@@ -301,14 +301,14 @@ pub fn do_close(
     )
   }
   let sq_diff = sq_received.1st - sq_sent.1st
-  trace @"Close.Con.4": @"`amt_rec + chqs_amt + sq_diff == amt_out`"
+  trace @"Close.Con.4": @"`amt_rec + chqs_amt + sq_diff == amt0_out`"
   let amt_rec =
     if is_vk0 {
-      amt_in
+      amt1_in
     } else {
-      tot_in - amt_in
+      tot_in - amt1_in
     }
-  expect amt_rec + chqs_amt + sq_diff == amt_out
+  expect amt_rec + chqs_amt + sq_diff == amt0_out
   trace @"Close.Con.5": @"`sq_out == sq_sent`"
   expect sq_sent == squash_out
   trace @"Close.Con.6": @"`timeout_out > ub + respond_period`"
