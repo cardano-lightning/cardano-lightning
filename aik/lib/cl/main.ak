@@ -48,6 +48,7 @@ fn exclusive_upper_bound(
   validity_range: Interval<PosixMilliseconds>,
 ) -> PosixMilliseconds {
   let Interval { upper_bound, .. } = validity_range
+  // FIXME (paluh): Should we just expect `is_inclusive` to be `false`?
   expect IntervalBound { bound_type: Finite(ts), is_inclusive } = upper_bound
   // Is it correct to assume that infinity is exclusive by nature? :-)
   if is_inclusive {

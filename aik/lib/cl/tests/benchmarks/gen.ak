@@ -2,10 +2,10 @@ use aiken/builtin.{append_bytearray, less_than_bytearray}
 use aiken/collection.{Index}
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use aiken/crypto.{ScriptHash, VerificationKeyHash, blake2b_224}
 use aiken/fuzz.{and_then}
 use aiken/interval.{
-  Finite, Interval, IntervalBound, NegativeInfinity, PositiveInfinity,
+  Finite, Interval, IntervalBound, IntervalBoundType, NegativeInfinity, PositiveInfinity,
 }
 use aiken/math
 use aiken/primitive/int
@@ -18,7 +18,7 @@ use cl/prelude.{Amount, Period, PosixMilliseconds, Signed}
 use cl/tests/benchmarks/cardano
 use cl/tests/benchmarks/fuzz as fuzz_contrib
 use cl/token
-use cl/types as t
+use cl/types.{MintRedeemer, Receipt} as t
 
 pub fn gen_keys() -> Fuzzer<t.Keys> {
   let vk0 <- and_then(cardano.verification_key())
@@ -114,7 +114,7 @@ pub fn mk_signed(x: a) -> Signed<a> {
   (x, signature)
 }
 
-pub fn cheque(index: Int, max_amount: Int) -> Fuzzer<t.Cheque> {
+pub fn gen_cheque(index: Int, max_amount: Int) -> Fuzzer<t.Cheque> {
   let amount <- and_then(fuzz.int_between(1, max_amount))
   let constr_idx <- and_then(fuzz.int_between(0, 2))
   when constr_idx is {
@@ -137,8 +137,8 @@ pub fn cheque(index: Int, max_amount: Int) -> Fuzzer<t.Cheque> {
   }
 }
 
-pub fn signed_cheque(index: Int, max_amount: Int) -> Fuzzer<Signed<t.Cheque>> {
-  let cheque <- and_then(cheque(index, max_amount))
+pub fn gen_signed_cheque(index: Int, max_amount: Int) -> Fuzzer<Signed<t.Cheque>> {
+  let cheque <- and_then(gen_cheque(index, max_amount))
   let signed_cheque = mk_signed(cheque)
   fuzz.constant(signed_cheque)
 }
@@ -176,7 +176,7 @@ pub fn gen_receipt_cheques(
     and_then(
       fuzz_contrib.traverse(
         resolved_chqs_idxs,
-        fn(index) { signed_cheque(index, max_chq_amount) },
+        fn(index) { gen_signed_cheque(index, max_chq_amount) },
       ),
     )
   // New cheques indexes should be a sequence starting from `sq_index + 1`
@@ -185,7 +185,7 @@ pub fn gen_receipt_cheques(
     and_then(
       fuzz_contrib.traverse(
         list.range(0, new_chqs_num),
-        fn(i) { signed_cheque(sq_index + i + 1, max_chq_amount) },
+        fn(i) { gen_signed_cheque(sq_index + i + 1, max_chq_amount) },
       ),
     )
   fuzz.constant(resolved_chqs |> list.concat(new_chqs))
@@ -295,41 +295,42 @@ pub type GenBoundSpec {
   GenFinateOnlyBound
 }
 
+pub fn gen_lb(bound_spec: GenBoundSpec) -> Fuzzer<IntervalBoundType<PosixMilliseconds>> {
+  if bound_spec == GenFinateOnlyBound {
+    let ts <- and_then(fuzz.int_between(0, 100000000000000000))
+    fuzz.constant(Finite(ts))
+  } else {
+    let infinity <- and_then(fuzz.bool())
+    if infinity {
+      fuzz.constant(NegativeInfinity)
+    } else {
+      let ts <- and_then(fuzz.int_between(0, 100000000000000000))
+      fuzz.constant(Finite(ts))
+    }
+  }
+}
+
+pub fn gen_ub(bound_spec: GenBoundSpec) -> Fuzzer<IntervalBoundType<PosixMilliseconds>> {
+  if bound_spec == GenFinateOnlyBound {
+    let ts <- and_then(fuzz.int_between(0, 100000000000000000))
+    fuzz.constant(Finite(ts))
+  } else {
+    let infinity <- and_then(fuzz.bool())
+    if infinity {
+      fuzz.constant(PositiveInfinity)
+    } else {
+      let ts <- and_then(fuzz.int_between(0, 100000000000000000))
+      fuzz.constant(Finite(ts))
+    }
+  }
+}
+
 pub fn gen_validity_range(
   lb_spec: GenBoundSpec,
-  ub_finite_only: GenBoundSpec,
+  ub_spec: GenBoundSpec,
 ) -> Fuzzer<Interval<PosixMilliseconds>> {
-  let lb <-
-    and_then(
-      if lb_spec == GenFinateOnlyBound {
-        let ts <- and_then(fuzz.int_between(0, 100000000000000000))
-        fuzz.constant(Finite(ts))
-      } else {
-        let infinity <- and_then(fuzz.bool())
-        if infinity {
-          fuzz.constant(NegativeInfinity)
-        } else {
-          let ts <- and_then(fuzz.int_between(0, 100000000000000000))
-          fuzz.constant(Finite(ts))
-        }
-      },
-    )
-
-  let ub <-
-    and_then(
-      if ub_finite_only == GenFinateOnlyBound {
-        let ts <- and_then(fuzz.int_between(0, 100000000000000000))
-        fuzz.constant(Finite(ts))
-      } else {
-        let infinity <- and_then(fuzz.bool())
-        if infinity {
-          fuzz.constant(PositiveInfinity)
-        } else {
-          let ts <- and_then(fuzz.int_between(0, 100000000000000000))
-          fuzz.constant(Finite(ts))
-        }
-      },
-    )
+  let lb <- and_then(gen_lb(lb_spec))
+  let ub <- and_then(gen_ub(ub_spec))
 
   let lower_bound = IntervalBound { bound_type: lb, is_inclusive: False }
   let upper_bound = IntervalBound { bound_type: ub, is_inclusive: False }
@@ -385,7 +386,7 @@ pub fn gen_opened_input_info(max_cheques: Int) -> Fuzzer<OpenedInputInfo> {
   let (amount0, _, excluded0) = sq0
   let (amount1, _, excluded1) = sq1
   let smaller_key_extra <- and_then(fuzz.int_between(0, 100000000000000000))
-  let bigger_key_extra <- and_then(fuzz.int_between(0, 100000000000000000))
+  let bigger_key_extra <- and_then(fuzz.int_between(if smaller_key_extra == 0 { 1 } else { 0 }, 100000000000000000))
 
   let amounts_diff = amount0 - amount1
   // Cheque should have at least one Lovelace value
@@ -414,22 +415,22 @@ pub fn gen_add_step_tx(own_hash, max_cheques) -> Fuzzer<Tx> {
   let own_address <-
     and_then(cardano.address_with_payment_credential(Script(own_hash)))
   let OpenedInputInfo {
-    amount: amount_in,
+    amount: amt1_in,
     total: tot_in,
     keys,
     sn: sn_in,
     period: period_in,
   } <- and_then(gen_opened_input_info(max_cheques))
 
-  let stage_in = t.Opened(amount_in, sn_in, period_in)
+  let stage_in = t.Opened(amt1_in, sn_in, period_in)
   let amount_add <- and_then(fuzz.int_between(1, 100000000000000000))
   let is_vk0_add <- and_then(fuzz.bool())
   // TODO: add support for snapshot update
   let stage_out =
     if is_vk0_add {
-      t.Opened(amount_in + amount_add, sn_in, period_in)
-    } else {
       stage_in
+    } else {
+      t.Opened(amt1_in + amount_add, sn_in, period_in)
     }
   let tot_out = tot_in + amount_add
   let out_ref <- and_then(cardano.output_reference())
@@ -442,7 +443,7 @@ pub fn gen_add_step_tx(own_hash, max_cheques) -> Fuzzer<Tx> {
         own_address,
         assets.from_lovelace(tot_in)
           |> assets.add(own_hash, token.cid_to_token(cid), 1),
-        InlineDatum((own_hash, keys, stage_out)),
+        InlineDatum((own_hash, keys, stage_in)),
         None,
       ),
     )
@@ -456,9 +457,9 @@ pub fn gen_add_step_tx(own_hash, max_cheques) -> Fuzzer<Tx> {
     )
   let signatory =
     if is_vk0_add {
-      keys.1st
+      blake2b_224(keys.1st)
     } else {
-      keys.2nd
+      blake2b_224(keys.2nd)
     }
   fuzz.constant(Tx([input], [output], [signatory], mempty_validity_range))
 }
@@ -504,17 +505,17 @@ pub fn mk_pend(receipt_cheqs: List<Signed<t.Cheque>>) -> t.Pend {
   )
 }
 
-pub fn gen_close_step_tx(own_hash, max_cheques) -> Fuzzer<(Tx, t.Receipt)> {
+pub fn gen_close_step_tx(own_hash, max_cheques) -> Fuzzer<(Tx, Receipt)> {
   let own_address <-
     and_then(cardano.address_with_payment_credential(Script(own_hash)))
   let OpenedInputInfo {
-    amount: amount_in,
+    amount: amt1_in,
     total,
     keys: keys_in,
     sn: sn_in,
     period,
   } <- and_then(gen_opened_input_info(max_cheques))
-  let stage_in = t.Opened(amount_in, sn_in, period)
+  let stage_in = t.Opened(amt1_in, sn_in, period)
   let out_ref <- and_then(cardano.output_reference())
   let cid <- and_then(channel_id())
 
@@ -538,11 +539,11 @@ pub fn gen_close_step_tx(own_hash, max_cheques) -> Fuzzer<(Tx, t.Receipt)> {
       (keys_in.2nd, keys_in.1st)
     }
   let sn_out <- and_then(gen_snapshot(max_cheques, Some(sn_in)))
-  let amount_out =
+  let amt_in =
     if is_vk0_close {
-      amount_in
+      amt1_in
     } else {
-      total - amount_in
+      total - amt1_in
     }
   let (own_squash, partners_squash) =
     when (is_vk0_close, less_than_bytearray(keys_in.1st, keys_in.2nd)) is {
@@ -555,15 +556,6 @@ pub fn gen_close_step_tx(own_hash, max_cheques) -> Fuzzer<(Tx, t.Receipt)> {
       // vk1 is closing and vk1 squash is first
       (False, False) -> sn_out
     }
-  let validity_range <-
-    and_then(gen_validity_range(GenFinateOnlyBound, GenAnyBound))
-  expect Interval {
-    lower_bound: IntervalBound { bound_type: Finite(ts), is_inclusive: _ },
-    upper_bound: _,
-  } = validity_range
-
-  let timeout = ts + period
-
   let receipt <-
     and_then(
       {
@@ -573,11 +565,73 @@ pub fn gen_close_step_tx(own_hash, max_cheques) -> Fuzzer<(Tx, t.Receipt)> {
           } else {
             SecondSquash
           }
-        gen_receipt(sn_out, max_cheques, amount_out, which_sq)
+        gen_receipt(sn_out, max_cheques, amt_in, which_sq)
       },
     )
+
+  // The tx builder should pick an upper bound which proves
+  // that none of the timeouts of the cheques passed.
+  let possible_min_receipt_timeout = {
+    let (_, signed_cheques) = receipt
+    signed_cheques
+      |> list.filter_map(fn(signed_cheque) {
+        when signed_cheque.1st is {
+          t.Htlc(_, timeout, _, _) -> Some(timeout)
+          t.HtlcUnlocked(_, timeout, _, _) -> Some(timeout)
+          _ -> None
+        }
+      })
+      |> list.reduce(None, fn (acc, timeout) {
+        when acc is {
+          None -> Some(timeout)
+          Some(acc_timeout) ->
+            if timeout < acc_timeout {
+              Some(timeout)
+            } else {
+              Some(acc_timeout)
+            }
+        }
+      })
+  }
+
+  let (validity_range, ub, ub_is_inclusive) <- and_then({
+    expect Interval {
+      lower_bound: lower_bound,
+      upper_bound: IntervalBound {
+        bound_type: Finite(orig_ts),
+        is_inclusive: is_inclusive
+      },
+    } <- and_then(gen_validity_range(GenAnyBound, GenFinateOnlyBound))
+
+    let ub = when possible_min_receipt_timeout is {
+      None -> orig_ts
+      Some(timeout) -> timeout - 1
+    }
+    let range = Interval {
+      lower_bound,
+      upper_bound: IntervalBound {
+        bound_type: Finite(ub),
+        is_inclusive
+      }
+    }
+
+    fuzz.constant((range, ub, is_inclusive))
+  })
+
+  let timeout = ub + (if ub_is_inclusive { 1 } else { 0 }) + period + 1
   let pend_out = mk_pend(receipt.2nd)
-  let stage_out = t.Closed(amount_out, partners_squash, timeout, pend_out)
+  let chqs_amt = receipt.2nd
+    |> list.filter_map(fn(signed_cheque) {
+      when signed_cheque.1st is {
+        t.Normal(_, amount) -> Some(amount)
+        t.HtlcUnlocked(_, _, _, amount) -> Some(amount)
+        t.Htlc(_, _, _, _) -> None
+      }
+    })
+    |> list.reduce(0, fn(acc, amt) { acc + amt })
+  let sq_diff = own_squash.1st - partners_squash.1st
+  let amt0_out = amt_in + chqs_amt + sq_diff
+  let stage_out = t.Closed(amt0_out, partners_squash, timeout, pend_out)
 
   let output =
     tx.Output(
@@ -589,19 +643,34 @@ pub fn gen_close_step_tx(own_hash, max_cheques) -> Fuzzer<(Tx, t.Receipt)> {
     )
   let signatory =
     if is_vk0_close {
-      keys_in.1st
+      blake2b_224(keys_in.1st)
     } else {
-      keys_in.2nd
+      blake2b_224(keys_in.2nd)
     }
 
-  fuzz.constant((Tx([input], [output], [signatory], validity_range), receipt))
+  fuzz.constant((
+    Tx([input], [output], [signatory], validity_range),
+    receipt
+  ))
+}
+
+// Because of the compiler bug: https://github.com/aiken-lang/aiken/issues/1172
+// we are forced to use more monomorphic types in the fuzzer return value.
+pub type OptionOutputReference {
+  NoneOutputReference
+  SomeOutputReference(OutputReference)
+}
+
+pub type ListNStep {
+  NStepNil
+  NStepCons(t.NStep, ListNStep)
 }
 
 pub fn gen_close_steps_transaction(
   own_hash,
   max_cheques,
   n_steps,
-) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+) -> Fuzzer<(Transaction, MintRedeemer)> {
   let txs_with_receipts <-
     and_then(
       fuzz_contrib.traverse(
@@ -617,58 +686,11 @@ pub fn gen_close_steps_transaction(
   let redeemer =
     (
       None,
-      txs_with_receipts |> list.map(fn((_, r)) { t.Continuing(t.Close(r)) }),
+      txs_with_receipts |> list.map(fn((_, r)) { t.Continuing(t.Close(r)) })
     )
   fuzz.constant((transaction, redeemer))
 }
 
-// pub type Stage {
-//   Opened(Amount, Snapshot, Period)
-//   Closed(Amount, Squash, Timeout, Pend)
-//   Responded(Amount, Pend, Pend)
-//   Elapsed(Pend)
-//   Resolved(Pend, Pend)
-// }
-// pub type MintRedeemer =
-//   (Option<OutputReference>, List<NStep>)
-// 
-// pub type NStep {
-//   Continuing(CStep)
-//   End(Secrets)
-// }
-// pub type CStep {
-//   Add(Option<Signed<Snapshot>>)
-//   Close(Receipt)
-//   Respond(Receipt, DropOld)
-//   Resolve(Secrets, DropOld)
-//   Elapse(Secrets)
-//   Free(Secrets, DropOld)
-// }
-
-// pub type HtlcLockedReduced =
-//   (Amount, Timeout, HtlcLock)
-
-// pub type Pend =
-//   List<HtlcLockedReduced>
-//
-// pub type Cheque {
-//   Normal(Index, Amount)
-//   Htlc(Index, Timeout, HtlcLock, Amount)
-//   HtlcUnlocked(Index, Timeout, HtlcSecret, Amount)
-// }
-//
-// pub type Receipt =
-//   (Option<Signed<Snapshot>>, List<Signed<Cheque>>)
-
-//  let output =
-//    tx.Output(
-//      own_address,
-//      assets.from_lovelace(total)
-//        |> assets.add(own_hash, token.cid_to_token(cid), 1),
-//      InlineDatum((own_hash, keys_out, stage_out)),
-//      None,
-//    )
-// Tx([input], [output], [signatory], validity_range)
 pub fn parse_singleton_step_tx(
   tx: Tx,
 ) -> Option<(t.Keys, t.Stage, t.ChannelId, Amount)> {
@@ -706,6 +728,7 @@ pub fn gen_respond_step_tx(
   max_cheques,
 ) -> Fuzzer<(Tx, t.DropOld, t.Receipt)> {
   // Let's use the other step tx as a base
+  // pub type MonoReceipt = (OptionSignedSnapshot, List<Signed<t.Cheque>>)
   expect (close_tx, (Some(((closing_sq0, closing_sq1), _sig)), _chqs)) <-
     and_then(gen_close_step_tx(own_hash, max_cheques))
   // `sq_in` is a squash of a `keys.2nd`
@@ -793,7 +816,7 @@ pub fn gen_respond_step_tx(
       InlineDatum((own_hash, keys, t.Responded(lovelace_out, pend0_in, pend1))),
       None,
     )
-  let signatory = keys.2nd
+  let signatory = blake2b_224(keys.2nd)
   fuzz.constant(
     (
       Tx([input], [channel_output, payout_output], [signatory], validity_range),
@@ -828,3 +851,69 @@ pub fn gen_respond_steps_transaction(
     )
   fuzz.constant((transaction, redeemer))
 }
+
+// pub type Stage {
+//   Opened(Amount, Snapshot, Period)
+//   Closed(Amount, Squash, Timeout, Pend)
+//   Responded(Amount, Pend, Pend)
+//   Elapsed(Pend)
+//   Resolved(Pend, Pend)
+// }
+// pub type MintRedeemer =
+//   (Option<OutputReference>, List<NStep>)
+// 
+// pub type NStep {
+//   Continuing(CStep)
+//   End(Secrets)
+// }
+// pub type CStep {
+//   Add(Option<Signed<Snapshot>>)
+//   Close(Receipt)
+//   Respond(Receipt, DropOld)
+//   Resolve(Secrets, DropOld)
+//   Elapse(Secrets)
+//   Free(Secrets, DropOld)
+// }
+
+// pub type HtlcLockedReduced =
+//   (Amount, Timeout, HtlcLock)
+
+// pub type Pend =
+//   List<HtlcLockedReduced>
+//
+// pub type Cheque {
+//   Normal(Index, Amount)
+//   Htlc(Index, Timeout, HtlcLock, Amount)
+//   HtlcUnlocked(Index, Timeout, HtlcSecret, Amount)
+// }
+//
+// pub type Receipt =
+//   (Option<Signed<Snapshot>>, List<Signed<Cheque>>)
+
+//  let output =
+//    tx.Output(
+//      own_address,
+//      assets.from_lovelace(total)
+//        |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//      InlineDatum((own_hash, keys_out, stage_out)),
+//      None,
+//    )
+// Tx([input], [output], [signatory], validity_range)
+
+// Resolve can be used after when in `Resolved` or `Elapsed`
+// pub fn gen_post_respond_resolve_step_tx(
+//   own_hash,
+//   max_cheques,
+// ) -> Fuzzer<(Tx, t.Receipt)> {
+//   expect (respond_tx, drop_old, receipt) <-
+//     and_then(gen_respond_step_tx(own_hash, max_cheques))
+//   expect Some((
+//     keys,
+//     t.Responded(amount, pend0_in, pend1_in),
+//     cid,
+//     lovelace_in,
+//   )) = parse_singleton_step_tx(respond_tx)
+// 
+// }
+
+

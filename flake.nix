@@ -8,8 +8,9 @@
     git-hooks-nix.inputs.nixpkgs.follows = "nixpkgs";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
-    aiken.url = "github:aiken-lang/aiken/35e41a1724ca75273e8cd256e07a7d135056b311";
-    # aiken.url = "git+file:///home/paluh/projects/cardano-lightning/cardano-lightning/aiken?rev=15513f8285dcb41fd8ab4a8776210cc58a2d457a";
+    # aiken.url = "github:aiken-lang/aiken/35e41a1724ca75273e8cd256e07a7d135056b311";
+    # paluh/disabled-tests
+    aiken.url = "github:paluh/aiken/8d019336d2fb923ce9e5906eae8b7c0c84b0007e";
   };
 
   outputs = inputs @ {flake-parts, ...}:
