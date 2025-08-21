@@ -8,7 +8,8 @@
     git-hooks-nix.inputs.nixpkgs.follows = "nixpkgs";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
-    aiken.url = "github:aiken-lang/aiken/94ff20253b3d43ee5fcf501bb13902f58c729791";
+    aiken.url = "github:aiken-lang/aiken/35e41a1724ca75273e8cd256e07a7d135056b311";
+    # aiken.url = "git+file:///home/paluh/projects/cardano-lightning/cardano-lightning/aiken?rev=15513f8285dcb41fd8ab4a8776210cc58a2d457a";
   };
 
   outputs = inputs @ {flake-parts, ...}:
@@ -53,18 +54,35 @@
         };
         # NOTE: You can also use `config.pre-commit.devShell`
         devShells.default = pkgs.mkShell {
+          name = "cardano-lightning";
           nativeBuildInputs = [
             config.treefmt.build.wrapper
           ];
           shellHook = ''
             ${config.pre-commit.installationScript}
             echo 1>&2 "Welcome to the development shell!"
+
+            # FIXME: This should be packaged as a tool available in the shell
+            export VENV=./aik/test-vectors/.venv
+            # create dir if not exists
+            if [ ! -d "$VENV" ]; then
+              python3 -m venv $VENV
+            fi
+            source ./$VENV/bin/activate
+            pip install -r ./aik/test-vectors/requirements.txt
           '';
-          name = "cardano-lightning";
+
+          postShellHook = ''
+            ln -sf ${pkgs.python311.sitePackages}/* ./.venv/lib/python311.12/site-packages
+          '';
+
           # Let's keep this "path discovery techinque" here for refernece:
           # (builtins.trace (builtins.attrNames inputs.cardano-addresses.packages.${system}) inputs.cardano-cli.packages)
           packages = [
             inputs'.aiken.packages.aiken
+            pkgs.python311Packages.frozenlist
+            pkgs.python311
+            pkgs.nodePackages.mermaid-cli
           ];
         };
       };
