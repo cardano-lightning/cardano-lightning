@@ -26,6 +26,22 @@ fn has_vkh0(
     [] -> fail @"No vkh match"
   }
 }
+fn go_is_signer(vkh: VerificationKeyHash, signers: List<VerificationKeyHash>) -> Bool {
+  when signers is {
+    [vkh0, ..rest] ->
+      if vkh == vkh0 {
+        True
+      } else {
+        go_is_signer(vkh, rest)
+      }
+    [] -> False
+  }
+}
+
+fn is_signer(key: VerificationKey, signers: List<VerificationKeyHash>) -> Bool {
+ let vkh = crypto.blake2b_224(key)
+ go_is_signer(vkh, signers)
+}
 
 fn has_vk0(keys: t.Keys, signers: List<VerificationKeyHash>) -> Bool {
   let (vk0, vk1) = keys
@@ -36,29 +52,9 @@ fn has_vk1(keys: t.Keys, signers: List<VerificationKeyHash>) -> Bool {
   !has_vk0(keys, signers)
 }
 
-fn self_and_other_keys(
-  keys: t.Keys,
-  signers: List<VerificationKeyHash>,
-) -> (VerificationKey, VerificationKey) {
-  let (vk0, vk1) = keys
-  if has_vkh0(crypto.blake2b_224(vk0), crypto.blake2b_224(vk1), signers) {
-    (vk0, vk1)
-  } else {
-    (vk1, vk0)
-  }
-}
-
-fn other_key(keys: t.Keys, is_vk0: Bool) {
-  if is_vk0 {
-    keys.2nd
-  } else {
-    keys.1st
-  }
-}
-
 pub fn do_add(
   cid: t.ChannelId,
-  signers: List<VerificationKeyHash>,
+  by_opener: Bool,
   tot_in: Amount,
   keys_in: t.Keys,
   stage_in: t.Stage,
@@ -67,7 +63,6 @@ pub fn do_add(
   keys_out: t.Keys,
   stage_out: t.Stage,
 ) -> Bool {
-  let is_vk0 = has_vk0(keys_in, signers)
   trace @"Add.In": @"Input state"
   trace @"Add.In.0": @"Keys `keys_in`"
   trace @"Add.In.1": @"`Opened(amt1_in, snapshot_in, period_in) = stage_in`"
@@ -85,9 +80,9 @@ pub fn do_add(
   trace @"Add.Con.0": @"Total amount has increased by `x = tot_out - tot_in`, `x > 0`"
   let x = tot_out - tot_in
   expect x > 0
-  trace @"Add.Con.1": @"If tx signed by `vk0` then `amt1_in == amt1_out` else `amt1_in + x == amt1_out`"
+  trace @"Add.Con.1": @"If `by_opener` then `amt1_in == amt1_out` else `amt1_in + x == amt1_out`"
   expect
-    if is_vk0 {
+    if by_opener {
       amt1_out == amt1_in
     } else {
       amt1_out == amt1_in + x
@@ -100,7 +95,13 @@ pub fn do_add(
     Some((snapshot, sig)) -> {
       trace @"Add.Con.3": @"Else "
       trace @"Add.Con.3.0": @"Snapshot signed by other key"
-      expect snapshot.verify(cid, snapshot, other_key(keys_in, is_vk0), sig)
+      // Opener is the second element of the tuple
+      let other_key = if by_opener {
+        keys_in.1st
+      } else {
+        keys_in.2nd
+      }
+      expect snapshot.verify(cid, snapshot, other_key, sig)
       trace @"Add.Con.3.1": @"`snapshot_out` equals provided union `snapshot_in`"
       expect snapshot_out == snapshot.union(snapshot_in, snapshot)
     }
@@ -117,8 +118,6 @@ fn verify_cheque_idx(
 ) -> List<Index> {
   trace @"ReduceCheques.Con.1": @"`chq_idex > prev_chq_idx`"
   expect chq_idx > prev_chq_idx
-  trace @"ReduceCheques.Con.2": @"Cheques index is valid"
-  trace @"ReduceCheques.Con.2.1": @"Either `ch_idx > sq_idx`"
   if chq_idx > sq_idx {
     []
   } else {
@@ -176,8 +175,8 @@ fn reduce_cheques(
         t.HtlcUnlocked(idx, timeout, _secret, amt) -> {
           let sq_excl_rest =
             verify_cheque_idx(prev_cheque_idx, idx, sq_idx, sq_excl)
-          trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout > ub`"
-          expect timeout > ub
+          trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout >= ub`"
+          expect timeout >= ub
           trace @"ReduceCheques.Out": @"Total amount of the reduced cheques"
           amt + reduce_cheques(
             cid,
@@ -193,8 +192,8 @@ fn reduce_cheques(
         t.Htlc(idx, timeout, lock, amt) -> {
           let sq_excl_rest =
             verify_cheque_idx(prev_cheque_idx, idx, sq_idx, sq_excl)
-          trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout > ub`"
-          expect timeout > ub
+          trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout >= ub`"
+          expect timeout >= ub
           trace @"ReduceCheques.Con.4": @"If `Htlc(_, timeout, lock, amt) = chq` then `pend.pop() == (amt, timeout, lock)`"
           expect [p, ..pend_rest] = pend
           expect (amt, timeout, lock) == p
@@ -234,6 +233,7 @@ pub fn received_and_sent(
 
 pub fn do_close(
   cid: t.ChannelId,
+  by_opener: Bool,
   signers: List<VerificationKeyHash>,
   ub: PosixMilliseconds,
   receipt: t.Receipt,
@@ -246,26 +246,26 @@ pub fn do_close(
 ) -> Bool {
   trace @"Close.In": @"Input state"
   trace @"Close.In.0": @"Keys `keys_in`"
-  trace @"Close.In.1": @"`Opened(amt1_in, snapshot_in, respond_period) = stage_in`"
+  trace @"Close.In.1": @"`Opened(amt_non_opener_in, snapshot_in, respond_period) = stage_in`"
   trace @"Close.In.2": @"Amount `tot_in`"
-  expect t.Opened(amt1_in, snapshot_in, respond_period) = stage_in
+  expect t.Opened(amt_non_opener_in, snapshot_in, respond_period) = stage_in
 
   trace @"Close.Out": @"Output state"
   trace @"Close.Out.0": @"Keys `keys_out`"
-  trace @"Close.Out.1": @"`Closed(amt0_out, squash_out, timeout_out, pend_out) = stage_out`"
-  expect t.Closed(amt0_out, squash_out, timeout_out, pend_out) = stage_out
+  trace @"Close.Out.1": @"`Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`"
+  expect t.Closed(amt_closer_out, sq_non_closer_received_out, timeout_out, pend_out) = stage_out
   trace @"Close.Out.2": @"Amount `tot_out`"
-  let (self, other) = self_and_other_keys(keys_in, signers)
-  let is_vk0 = self == keys_in.1st
 
   trace @"Close.Con": @"Constraints"
-  trace @"Close.Con.0": @"If tx signed by `vk0` then `keys_in == keys_out` else keys are reversed"
-  expect
-    if is_vk0 {
-      keys_out == keys_in
-    } else {
-      keys_out.1st == keys_in.2nd && keys_out.2nd == keys_in.1st
-    }
+  trace @"Close.Con.0": @"If `by_opener` then `keys_in == keys_out` else keys are reversed"
+  expect if by_opener {
+    keys_out == keys_in
+  } else {
+    keys_out.1st == keys_in.2nd && keys_out.2nd == keys_in.1st
+  }
+  let closer_key = keys_out.1st
+  let non_closer_key = keys_out.2nd
+  expect is_signer(closer_key, signers)
   let (possible_snapshot, chqs) = receipt
   let snapshot_out =
     when possible_snapshot is {
@@ -275,23 +275,23 @@ pub fn do_close(
       }
       Some((snp, snp_sig)) -> {
         trace @"Close.Con.2": @"Else "
-        trace @"Close.Con.2.0": @"Snapshot signed by other key"
-        expect snapshot.verify(cid, snp, other, snp_sig)
+        trace @"Close.Con.2.0": @"Snapshot signed by non-closer key"
+        expect snapshot.verify(cid, snp, non_closer_key, snp_sig)
         trace @"Close.Con.2.1": @"`snapshot_out` equals provided union `snapshot_in`"
         snapshot.union(snapshot_in, snp)
       }
     }
-  let (sq_received, sq_sent) = received_and_sent(self, other, snapshot_out)
+  let (sq_closer_received, sq_closer_sent) = received_and_sent(closer_key, non_closer_key, snapshot_out)
   trace @"Close.Con.3": @"ReduceCheques succeeds with `chqs_amt` for the provided cheques and the `pend_out`"
   let chqs_amt = {
-    let sq_idx = sq_received.2nd
-    let sq_excl = sq_received.3rd
+    let sq_idx = sq_closer_received.2nd
+    let sq_excl = sq_closer_received.3rd
 
     trace @"ReduceCheques.Pre": @"`prev_cheque_idx` initialized by `-1`"
     let prev_cheque_idx = -1
     reduce_cheques(
       cid,
-      other,
+      non_closer_key,
       chqs,
       prev_cheque_idx,
       sq_idx,
@@ -300,19 +300,25 @@ pub fn do_close(
       ub,
     )
   }
-  let sq_diff = sq_received.1st - sq_sent.1st
-  trace @"Close.Con.4": @"`amt_rec + chqs_amt + sq_diff == amt0_out`"
-  let amt_rec =
-    if is_vk0 {
-      amt1_in
-    } else {
-      tot_in - amt1_in
-    }
-  expect amt_rec + chqs_amt + sq_diff == amt0_out
-  trace @"Close.Con.5": @"`sq_out == sq_sent`"
-  expect sq_sent == squash_out
-  trace @"Close.Con.6": @"`timeout_out > ub + respond_period`"
-  expect timeout_out > ub + respond_period
+  trace @"Close.Con.4 : `amt_closer_out == amt_in + chqs_amt + sq_diff` where"
+  expect amt_closer_out == {
+    let amt_in =
+      if by_opener {
+        trace @"Close.Con.4.1: If the closer is also the opener then `amt_in = tot_in - amt_non_opener_in`"
+        tot_in - amt_non_opener_in
+      } else {
+        trace @"Close.Con.4.2: Else `amt_in = amt_non_opener_in`"
+        amt_non_opener_in
+      }
+
+    trace @"Close.Con.4.3: And `sq_diff = sq_received.1st - sq_sent.1st` where `sq_*` are parts of the latest snapshot"
+    let sq_diff = sq_closer_received.1st - sq_closer_sent.1st
+    amt_in + chqs_amt + sq_diff
+  }
+  trace @"Close.Con.5": @"`sq_non_closer_received_out == sq_closer_sent`"
+  expect sq_non_closer_received_out == sq_closer_sent
+  trace @"Close.Con.6": @"`timeout_out >= ub + respond_period`"
+  expect timeout_out >= ub + respond_period
   trace @"Close.Con.7": @"tot_out >= tot_in"
   tot_out >= tot_in
 }
@@ -342,19 +348,19 @@ pub fn do_respond(
 ) -> Bool {
   trace @"Respond.In": @"Input state"
   trace @"Respond.In.0": @"Keys `keys_in`"
-  trace @"Respond.In.1": @"`Closed(amt_in, sq_in, timeout_in, pend_in) = stage_in`"
-  expect t.Closed(amt_in, sq_in, _, pend_in) = stage_in
+  trace @"Respond.In.1": @"`Closed(amt0_in, sq_in, timeout_in, pend0_in) = stage_in`"
+  expect t.Closed(amt0_in, sq_in, _, pend0_in) = stage_in
   trace @"Respond.In.2": @"Amount `tot_in`"
 
   trace @"Respond.Out": @"Output state"
   trace @"Respond.Out.0": @"Keys `keys_out`"
-  trace @"Respond.Out.1": @"`Responded(amt_out, pend0, pend1) = stage_out`"
-  expect t.Responded(amt_out, pend0, pend1) = stage_out
+  trace @"Respond.Out.1": @"`Responded(amt0_out, pend0_out, pend1_out) = stage_out`"
+  expect t.Responded(amt0_out, pend0_out, pend1_out) = stage_out
   trace @"Respond.Out.2": @"Amount `tot_out`"
 
   trace @"Respond.Con": @"Constraints"
   trace @"Respond.Con.0": @"`keys_in.1` has singed the tx - the step is executed by the non-closer"
-  expect has_vk1(keys_in, signers)
+  expect is_signer(keys_in.2nd, signers)
   let self = keys_in.2nd
   let other = keys_in.1st
   trace @"Respond.Con.1": @"`keys_in == keys_out`"
@@ -362,11 +368,11 @@ pub fn do_respond(
   let (possible_snapshot, chqs) = receipt
   trace @"Respond.Con.2": @"Verify the receipt snapshot with `keys_in.0`"
   expect
-    amt_out == when possible_snapshot is {
+    amt0_out == when possible_snapshot is {
       Some((snp, snp_sig)) -> {
         expect snapshot.verify(cid, snp, other, snp_sig)
         let (sq_received, _) = received_and_sent(self, other, snp)
-        trace @"Respond.Con.3": @"ReduceCheques succeeds with `chqs_amt` for the provided cheques and the `pend1`"
+        trace @"Respond.Con.3": @"ReduceCheques succeeds with `chqs_amt` for the provided cheques and the `pend1_out`"
         trace @"ReduceCheques.Pre": @"`prev_cheque_idx` initialized by `-1`"
         let prev_cheque_idx = -1
         let chqs_amt =
@@ -377,27 +383,30 @@ pub fn do_respond(
             prev_cheque_idx,
             sq_received.2nd,
             sq_received.3rd,
-            pend1,
+            pend1_out,
             ub,
           )
-        trace @"Respond.Con.5": @"If new snapshot provided then `amt_out` is `amt_in - sq_diff - chqs_amt`"
+        trace @"Respond.Con.5": @"If new snapshot provided then `amt0_out` is `amt0_in - sq_diff - chqs_amt`"
         let sq_diff = sq_received.1st - sq_in.1st
-        amt_in - sq_diff - chqs_amt
+        amt0_in - sq_diff - chqs_amt
       }
       None -> {
-        trace @"Respond.Con.6": @"Else `amt_out == amt_in`"
-        amt_in
+        trace @"Respond.Con.6": @"Else `amt0_out == amt0_in`"
+        amt0_in
       }
     }
   if drop_old {
-    trace @"Respond.Con.7": @"If `drop_old` then `pend0` is `pend` with entries in which the `timeout < lb` have been dropped. The total reflects this"
-    expect pend0 == list.filter(pend_in, fn(p) { p.2nd < lb })
+    trace @"Respond.Con.7": @"If `drop_old` then `pend0_out` is `pend0_in` with entries in which all the `chq.timeout <= lb` have been dropped. The total reflects this"
+    // We are dropping the other users cheques here
+    // so the submitter has to prove that they are expired
+    // hence `timeout <= lb`
+    expect pend0_out == list.filter(pend0_in, fn(p) { p.2nd > lb })
   } else {
-    trace @"Respond.Con.8": @"Else `pend0 == pend`"
-    expect pend0 == pend_in
+    trace @"Respond.Con.8": @"Else `pend0_out == pend0_in`"
+    expect pend0_out == pend0_in
   }
-  trace @"Respond.Con.9": @"`tot_out` is equal to `amt_out + sum(pend1)`"
-  tot_out == amt_out + sum_pend(pend1)
+  trace @"Respond.Con.9": @"`tot_out` is greater or equal to `amt0_out + sum(pend1_out)`"
+  tot_out >= amt0_out + sum_pend(pend1_out)
 }
 
 // We separated this helper so we can track `curr_idx` on the `pend_in` list.

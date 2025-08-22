@@ -68,8 +68,7 @@ pub type Secrets =
 pub type DropOld =
   Bool
 
-pub type MintRedeemer =
-  (Option<OutputReference>, List<NStep>)
+pub type MintRedeemer = (Option<OutputReference>, List<NStep>)
 
 pub type NStep {
   Continuing(CStep)
@@ -77,8 +76,14 @@ pub type NStep {
 }
 
 pub type CStep {
-  Add(Option<Signed<Snapshot>>)
-  Close(Receipt)
+  Add {
+    by_opener: Bool,
+    snapshot: Option<Signed<Snapshot>>
+  }
+  Close {
+    by_opener: Bool,
+    receipt: Receipt
+  }
   Respond(Receipt, DropOld)
   Resolve(Secrets, DropOld)
   Elapse(Secrets)

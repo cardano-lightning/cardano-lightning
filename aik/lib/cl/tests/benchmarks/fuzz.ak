@@ -1,15 +1,33 @@
 use aiken/collection/list as list
 use aiken/fuzz.{and_then}
 
-pub fn traverse(elems: List<a>, f: fn(a) -> Fuzzer<b>) -> Fuzzer<List<b>> {
+// Folding List over Fuzzers. Returns Fuzzer of the accumulated value.
+pub fn foldl(elems: List<a>, acc: b, f: fn(b, a) -> Fuzzer<b>) -> Fuzzer<b> {
   when elems is {
-    [] -> fuzz.constant([])
+    [] -> fuzz.constant(acc) // In here we return the accumulated value
     [x, ..xs] -> {
-      let x <- and_then(f(x))
-      let xs <- and_then(traverse(xs, f))
-      fuzz.constant(xs |> list.push(x))
+      let new_acc <- and_then(f(acc, x))
+      foldl(xs, new_acc, f)
     }
   }
+}
+
+pub fn foldr(elems: List<a>, init: b, f: fn(a, b) -> Fuzzer<b>) -> Fuzzer<b> {
+  when elems is {
+    [] -> fuzz.constant(init) // In here we return the accumulated value
+    [x, ..xs] -> {
+      let acc <- and_then(foldr(xs, init, f))
+      f(x, acc)
+    }
+  }
+}
+
+// Traversing over list of Fuzzers. Returns Fuzzer of the accumulated list.
+pub fn traverse_list(elems: List<a>, f: fn(a) -> Fuzzer<b>) -> Fuzzer<List<b>> {
+  foldr(elems, [], fn(a, acc) {
+    let b <- and_then(f(a))
+    fuzz.constant(acc |> list.push(b))
+  })
 }
 
 // Try to pick `num` random elements. If the list is shorter
@@ -41,11 +59,10 @@ pub fn pick_elem(elems: List<a>) -> Fuzzer<a> {
 
 // This gives you hopefully a subset of `elems`.
 // The size of the set can be between 0 and `length`.
-pub fn pick_subset(_elems: List<a>, _desired_length: Int) -> Fuzzer<List<a>> {
-  fuzz.constant([])
-  // if list.length(elems) == 0 {
-  //   fuzz.constant([])
-  // } else {
-  //   fuzz.set_between(pick_elem(elems), 0, desired_length)
-  // }
+pub fn pick_subset(elems: List<a>, desired_length: Int) -> Fuzzer<List<a>> {
+  if desired_length >= list.length(elems) {
+    fuzz.constant(elems)
+  } else {
+    fuzz.set_between(pick_elem(elems), 0, desired_length)
+  }
 }

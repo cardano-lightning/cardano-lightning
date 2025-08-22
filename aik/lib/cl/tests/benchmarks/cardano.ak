@@ -34,6 +34,15 @@ pub fn verification_key() {
   fuzz.bytearray_between(32, 32)
 }
 
+pub fn gen_different_verification_key(given: ByteArray) -> Fuzzer<ByteArray> {
+  let key <- and_then(verification_key())
+  if key == given {
+    gen_different_verification_key(given)
+  } else {
+    fuzz.constant(key)
+  }
+}
+
 // Credential
 
 pub fn credential() {

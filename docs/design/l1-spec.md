@@ -5,6 +5,12 @@ author:
   - "@paluh"
 ---
 
+Questions (paluh)
+
+> Because of min ADA constraint
+> Respond.Con.9: `tot_out` is greater or equal to `amt0_out + sum(pend1)`
+
+
 ## Intro
 
 Cardano Lightning (CL) is p2p payment solution inspired by Bitcoin Lightning
@@ -332,9 +338,9 @@ The order of the pends reflects the order of the keys.
 
 ##### Opened stage
 
-Suppose the stage is `Opened(amt1, snapshot, respond_period)`.
+Suppose the stage is `Opened(amt_non_opener_in, snapshot, respond_period)`.
 
-`amt1` is the amount of channel funds that belong to the non-opener partner.
+`amt_non_opener_in` is the amount of channel funds that belong to the non-opener partner.
 Typically this will start at 0 as all funds are provided by the opener. However,
 this is not enforced and up to the partners to decide. The keys should be
 ordered `(opener, non-opener)`, but beyond the above point, this is of no
@@ -565,8 +571,9 @@ names:
 1. Tx constants:
 1. Channel Id : `cid`
 1. Signatories : `signers = tx.extra_signatories`
-1. Validity range lower bound `lb = tx.validity_range.lower_bound`,
-1. Validity range upper bound `ub = tx.validity_range.upper_bound`
+1. We normalize the validity range so the boundary values are excluded - in other words `lower_bound` can be treated as a point in the past and `upper_bound` can be treated as a point in the future:
+  * Normalized validity range lower bound `lb = normalize(tx.validity_range).lower_bound`,
+  * Normalized validity range upper bound `ub = normalize(tx.validity_range).upper_bound`
 1. Input derived:
 1. Total funds `tot_in`
 1. Keys `keys_in`
@@ -585,14 +592,7 @@ we'll use the alias `ExtendedInt`
 ### Do steps
 
 We encode the step verification as function that fails or returns unit.
-
-In every tx precisely one of the partners signs the tx. If neither partner has
-signed the tx fails. If both partners have signed, then the behaviour is
-undefined. `signed_by_vk0` is a boolean such that:
-
-- `True`, if the tx is signed by `vk0`,
-- `False`, if the tx is signed by `vk1`
-- `fail` otherwise
+In every tx a given party indicated by the context (either redeemer or step) signs the tx.
 
 #### Do open
 
@@ -607,6 +607,8 @@ Since an `open` necessarily involves minting a thread token, we defer to the
 By executing this step we are transitioning from the unstage channel to the
 ["Opened stage"]((#opened-stage).
 
+The Opened stage contains keys
+
 #### Do add
 
 ##### Transition
@@ -618,7 +620,7 @@ By executing this step we are circling back to ["Opened stage"]((#opened-stage).
 ```aiken
 pub fn do_add(
   cid: t.ChannelId,
-  signers: List<VerificationKeyHash>,
+  to_opener: Bool,
   tot_in: Amount,
   keys_in: t.Keys,
   stage_in: t.Stage,
@@ -645,8 +647,7 @@ pub fn do_add(
 
 - Add.Con : Constraints
   - Add.Con.0 : Total amount has increased by `x = tot_out - tot_in`, `x > 0`
-  - Add.Con.1 : If tx signed by `vk0` then `amt_in == amt_out` else
-    `amt_in + x == amt_out`
+  - Add.Con.1 : If `to_opener` then `amt_in == amt_out` else `amt_in + x == amt_out`
   - Add.Con.2 : If no snapshot provided then `snapshot_out` equals `snapshot_in`
   - Add.Con.3 : Else
     - Add.Con.3.0 : Snapshot signed by `other`
@@ -701,7 +702,7 @@ fn reduce_cheques(
     - ReduceCheques.Con.2.1 : Either `ch_idx > sq_idx`
     - ReduceCheques.Con.2.2 : Or `chq_idx elem sq_excl` && all smaller idx from
       sq_excl are discarded
-  - ReduceCheques.Con.3 : (Un)locked `cheque.timeout > ub`
+  - ReduceCheques.Con.3 : (Un)locked `cheque.timeout >= ub`
   - ReduceCheques.Con.4 : If `Htlc(_, timeout, lock, amt) = chq` then
     `pend.pop() == (amt, timeout, lock)`
   - ReduceCheques.Con.5 : At the end of reduction `pend == []`
@@ -746,39 +747,44 @@ pub fn do_close(
 
 ##### Spec
 
+- Close.Redeemer :
+  - Close.Redeemer.0 : `receipt_snapshot` - optional signed snapshot
+  - Close.Redeemer.1 : `receipt_cheques` - list of resolved
+
 - Close.In : Input state
 
-  - Close.In.0 : Keys `keys_in`
-  - Close.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
+  - Close.In.0 : Keys `keys_in` and user flag `by_opener`
+  - Close.In.1 : `Opened(amt_non_opener, snapshot_in, period_in) = stage_in`
   - Close.In.2 : Amount `tot_in`
 
 - Close.Out : Output state
 
   - Close.Out.0 : Keys `keys_out`
   - Close.Out.1 :
-    `Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`
+    `Closed(amt_closer_out, sq_non_closer_received_out, timeout_out, pend_closer_out) = stage_out`
   - Close.Out.2 : Amount `tot_out`
 
 - Close.Con : Constraints
 
-  - Close.Con.0 : If tx signed by `vk0` then `keys_in == keys_out` else keys are
-    swaped
-  - Close.Con.1 : If no snapshot provided then `snapshot_out` equals
+  - Close.Con.0 : If `by_opener` then `keys_in == keys_out` else keys are swapped
+  - Close.Con.* : Transaction signed by the closer key `keys_out.1st`
+
+  - Close.Con.1 : If no snapshot provided then `snapshot` equals
     `snapshot_in`
-
   - Close.Con.2 : Else
-
-    - Close.Con.2.0 : Snapshot signed by other key
-    - Close.Con.2.1 : `snapshot_out` equals provided union `snapshot_in`
+    - Close.Con.2.0 : Snapshot signed by non-closer key
+    - Close.Con.2.1 : `snapshot` equals provided union `snapshot_in`
 
   - Close.Con.3 : `ReduceCheck` succeeds with `chqs_amt` for the provided
-    cheques and the `pend_out`
-  - Close.Con.4 : `amt_in + chqs_amt + sq_diff == amt_out` where
-    `amt_in = tot_in - amt1_in` if the closer is also the opener else
-    `amt_in = amt1_in` `sq_diff` is the difference of the squashes in the latest
-    snapshot
-  - Close.Con.5 : `sq_out == sq_sent`
-  - Close.Con.6 : `timeout_out > ub + respond_period`
+    cheques and the `pend_closer_out`
+
+  - Close.Con.4 : `amt_closer_out == amt_in + chqs_amt + sq_diff` where
+    - Close.Con.4.1: If the closer is also the opener then `amt_in = tot_in - amt_non_opener_in`
+    - Close.Con.4.2: Else `amt_in = amt_non_opener_in`
+    - Close.Con.4.3: And `sq_diff = sq_closer_received.1st - sq_closer_sent.1st` where `sq_*` are parts of the latest snapshot
+
+  - Close.Con.5 : `sq_non_closer_received_out == sq_closer_sent`
+  - Close.Con.6 : `timeout_out >= ub + respond_period`
   - Close.Con.7 : `tot_out >= tot_in`
 
 #### Do respond
@@ -802,8 +808,8 @@ eligible to claim from the channel:
 - We have information about both account's balances.
 - We have also information about possible liabilities from both sides.
 - Everyone's liability should be secured from its own account.
-- Given that in this step we should release non-closer's account taking into
-  account the amount of cheques that are still pending which were raised by him.
+- Given that in this step we should release non-closer's account considering
+  the amount of pending cheques raised by him.
 
 As with a close the tx size is linear in the number of cheques. Both partners
 must ensure they would be able to `close` or `resolve` all their cheques,
@@ -839,13 +845,13 @@ The redeemer supplies the `(receipt, drop_old)`
 - Respond.In : Input state
 
   - Respond.In.0 : Keys `keys_in`
-  - Respond.In.1 : `Closed(amt_in, sq_in, timeout_in, pend_in) = stage_in`"
+  - Respond.In.1 : `Closed(amt_closer_in, sq_in, timeout_in, pend0_in) = stage_in`"
   - Respond.In.2 : Amount `tot_in`
 
 - Respond.Out : Output state
 
   - Respond.Out.0 : Keys `keys_out`
-  - Respond.Out.1 : `Responded(amt_out, pend0, pend1) = stage_out`
+  - Respond.Out.1 : `Responded(amt0_out, pend0_out, pend1_out) = stage_out`
   - Respond.Out.2 : Amount `tot_out`
 
 - Respond.Con : Constraints
@@ -855,16 +861,16 @@ The redeemer supplies the `(receipt, drop_old)`
   - Respond.Con.1 : `keys_in == keys_out`
   - Respond.Con.2 : Verify the receipt snapshot with `keys_in.0`
   - Respond.Con.3 : `ReduceCheck` succeeds with `chqs_amt` for the receipt
-    cheques and the `pend1`
+    cheques and the `pend1_out`
 
-  - Respond.Con.4 : If new snapshot provided then `amt_out` is
-    `amt_in - sq_diff - chqs_amt` where `sq_diff = sq_in - sq_received` where
+  - Respond.Con.4 : If new snapshot provided then `amt_closer_out` is
+    `amt_closer_in - sq_diff - chqs_amt` where `sq_diff = sq_in - sq_received` where
     `sq_received` is the squash from the snapshot
-  - Respond.Con.6 : Else `amt_out == amt_in`
-  - Respond.Con.7 : If `drop_old` then `pend0` is `pend_in` with entries in
-    which the `timeout < lb` have been dropped. The total reflects this.
-  - Respond.Con.8 : Else `pend0 == pend_in`
-  - Respond.Con.9 : `tot_out` is equal to `amt_out + sum(pend1)`
+  - Respond.Con.6 : Else `amt_closer_out == amt_closer_in`
+  - Respond.Con.7 : If `drop_old` then `pend0_out` is `pend0_in` with entries in
+    which the `chq.timeout <= lb` have been dropped. The total reflects this.
+  - Respond.Con.8 : Else `pend0_out == pend0_in`
+  - Respond.Con.9 : `tot_out` is equal to `amt0_out + sum(pend1_out)`
 
 #### Do elapse
 
@@ -1034,15 +1040,15 @@ pub fn do_free(
   - Free.Con.0 : `keys_in == keys_out`
 
   - Free.Con.1 : When `stage_in` is
-    `Closed(amt_in, squash_in, timeout_in, pend_in)`
+    `Closed(amt_closer_in, squash_in, timeout_in, pend_in)`
 
     - Free.Con.1.0 : `keys_in.0` has signed the tx
     - Free.Con.1.1 :
-      `Close(amt_out, squash_out, timeout_out, pend_out) = stage_out`
+      `Close(amt_closer_out, squash_out, timeout_out, pend_out) = stage_out`
     - Free.Con.1.2 : `pend_out` is reduced from `pend_in` using provided secrets
       and results in `amt_freed`
     - Free.Con.1.3 : `amt_freed != 0` to prevent noop looping
-    - Free.Con.1.4 : `amt_out == amt_in + amt_freed`
+    - Free.Con.1.4 : `amt_closer_out == amt_closer_in + amt_freed`
     - Free.Con.1.5 : `squash_out == squash_in`
     - Free.Con.1.6 : `timeout_out == timeout_in`
     - Free.Con.1.7 : `tot_out == tot_in`

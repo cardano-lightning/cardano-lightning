@@ -20,13 +20,29 @@ bench bench_reduce_new_channels(
   main.reduce_new_channels(own_hash, seed, n_mint, outputs)
 }
 
-const max_cheques = 1
+const max_cheques = 10
+
+// mem:        max: 14000000
+// ## add:
+//              01: 00599937
+//              30: 08689825
+// ## close:
+//              01: 00812919
+//              30: 13576441
+//
+// steps:      max: 10000000000
+// ## add:
+//              01: 00189256432
+//              30: 02755232256
+// ## close:
+//              01: 00503756288
+//              30: 08594974720
+
 
 test test_reduce_add_steps_transaction(
   (transaction, redeemer) via gen.gen_add_steps_transaction(
     own_hash,
-    max_cheques,
-    1,
+    10,
   ),
 ) {
   main.mint(redeemer, own_hash, transaction)
@@ -35,7 +51,6 @@ test test_reduce_add_steps_transaction(
 bench bench_reduce_add_steps_transaction(
   (transaction, redeemer) via gen.gen_add_steps_transaction(
     own_hash,
-    max_cheques,
     _,
   ),
 ) {
@@ -62,23 +77,23 @@ bench bench_reduce_close_steps_transaction(
   main.mint(redeemer, own_hash, transaction)
 }
 
-test test_reduce_respond_steps_tx(
-  (transaction, redeemer) via gen.gen_respond_steps_transaction(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_reduce_respond_steps_tx(
-  (transaction, redeemer) via gen.gen_respond_steps_transaction(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
+// test test_reduce_respond_steps_tx(
+//   (transaction, redeemer) via gen.gen_respond_steps_transaction(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_reduce_respond_steps_tx(
+//   (transaction, redeemer) via gen.gen_respond_steps_transaction(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
