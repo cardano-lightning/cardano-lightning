@@ -30,16 +30,44 @@ note on link
   * The `Amount` reflects the non-opener balance.
   * The `Total - Amount` is the opener balance.
 end note
+
 Opened --u-> Opened : ""<b>add</b>""
+
 Opened --> Closed : <b>close</b>\nby closer
 note on link
-  * Doesn't release assets.
-  * The order of keys changes to `(closer, non-closer)`.
-  * Optionally delivers the newest snapshot.
-  * The `Amount` reflects the closer balance after:
-      - incorporating differences from the snapshot's squashes
-      - adding up all the reduced cheques provided in this step's Receipt
+* Close.In : Input state
+  - Close.In.0 : Keys `keys_in`
+  - Close.In.1 : `Opened(amt1_in, snapshot_in, period_in) = stage_in`
+  - Close.In.2 : Amount `tot_in`
+
+* Close.Out : Output state
+  - Close.Out.0 : Keys `keys_out`
+  - Close.Out.1 :
+    `Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out`
+  - Close.Out.2 : Amount `tot_out`
+
+* Close.Con : Constraints
+  - Close.Con.0 : If tx signed by `vk0` then `keys_in == keys_out` else keys are
+    swaped
+  - Close.Con.1 : If no snapshot provided then `snapshot_out` equals
+    `snapshot_in`
+
+  - Close.Con.2 : Else
+
+    - Close.Con.2.0 : Snapshot signed by other key
+    - Close.Con.2.1 : `snapshot_out` equals provided union `snapshot_in`
+
+  - Close.Con.3 : `ReduceCheck` succeeds with `chqs_amt` for the provided
+    cheques and the `pend_out`
+  - Close.Con.4 : `amt_in + chqs_amt + sq_diff == amt_out` where
+    `amt_in = tot_in - amt1_in` if the closer is also the opener else
+    `amt_in = amt1_in` `sq_diff` is the difference of the squashes in the latest
+    snapshot
+  - Close.Con.5 : `sq_out == sq_sent`
+  - Close.Con.6 : `timeout_out > ub + respond_period`
+  - Close.Con.7 : `tot_out >= tot_in`
 end note
+
 Closed --u-> Closed : <b>free</b>\nby closer
 Closed --d-> Responded : <b>respond</b>\nby non-closer
 note on link

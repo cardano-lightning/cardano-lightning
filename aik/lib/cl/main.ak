@@ -100,21 +100,25 @@ pub fn reduce(
                   )
                 expect
                   when cstep is {
-                    t.Add(add) ->
+                    t.Add{ by_opener, snapshot } ->
                       do_add(
                         cid,
-                        signers,
+                        by_opener,
                         tot_in,
                         keys_in,
                         stage_in,
-                        add,
+                        snapshot,
                         tot_out,
                         keys_out,
                         stage_out,
                       )
-                    t.Close(receipt) ->
+                    t.Close {
+                      by_opener,
+                      receipt,
+                    } ->
                       do_close(
                         cid,
+                        by_opener,
                         signers,
                         exclusive_upper_bound(validity_range),
                         receipt,
