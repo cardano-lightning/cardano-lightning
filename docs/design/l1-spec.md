@@ -143,7 +143,7 @@ script that verifies that the data is well-formed.
 
 #### Cheques
 
-Cheques a vehicle through wish funds are sent from one partner to the other. As
+Cheques are a vehicle via which funds are sent from one partner to the other. As
 such they must be understood on the L1.
 
 Cheques may be "normal" or "locked". Normal cheques, provided they are
@@ -207,7 +207,7 @@ To verify a signature:
 fn verify_cheque( signed_cheque : Signed<Cheque> , vk : VerificationKey) -> Bool {
   let (cheque, siganture) = signed_cheque
   let message = concat cid (as_bytes cheque)
-  verify(verificationKey, message == signature
+  verify(verificationKey, message, signature)
 }
 ```
 
