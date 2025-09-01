@@ -13,9 +13,8 @@ use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets.{Lovelace}
 use cardano/transaction.{InlineDatum, NoDatum, Output, OutputReference, Transaction}
 use cardano/transaction as tx
-use cl/step.{received_and_sent}
 use cl/channel
-use cl/prelude.{Amount, Period, PosixMilliseconds, Signed}
+use cl/prelude.{Amount, PosixMilliseconds, Signed}
 use cl/tests/benchmarks/cardano
 use cl/tests/benchmarks/fuzz as fuzz_contrib
 use cl/token
@@ -81,7 +80,7 @@ pub fn gen_squash(
     // * For now let's simplify generation of the exclude so we are sure that the list do not overlap
     Some((amt_in, idx_in, excl_in)) -> {
       expect amt_in <= min_sq_amt
-      expect min_sq_amt < max_sq_amt
+      expect min_sq_amt <= max_sq_amt
       let amt_out <- and_then(fuzz.int_between(min_sq_amt, max_sq_amt))
 
       let idx_increase <- and_then(fuzz.int_between(0, max_indices_span))
@@ -102,16 +101,30 @@ pub fn gen_squash(
 
 pub const empty_squash: t.Squash = (0, 0, [])
 
+pub type KeysOrder {
+  SelfKeySmaller
+  SelfKeyLarger
+}
+
+pub fn mk_keys_order(self, other) {
+  if less_than_bytearray(self, other) {
+    SelfKeySmaller
+  } else {
+    SelfKeyLarger
+  }
+}
+
 pub fn gen_snapshot(
   self_deposit: Lovelace,
   other_deposit: Lovelace,
   max_cheques: Int,
+  keysOrder: KeysOrder,
   prev_snapshot: Option<t.Snapshot>,
 ) -> Fuzzer<t.Snapshot> {
   let max_chqs_self_received = math.min(other_deposit, max_cheques)
   let max_chqs_self_sent = math.min(self_deposit, max_cheques)
 
-  when prev_snapshot is {
+  let (self_received, self_sent) <- and_then(when prev_snapshot is {
     None -> {
       let self_received <- and_then(gen_squash(
         max_chqs_self_received,
@@ -119,12 +132,16 @@ pub fn gen_snapshot(
         1_000_000_000,
         None,
       ))
-      // The cheques issued by the other party have be covered by his deposit.
+      // The cheques issued by the other party have to be covered by his deposit.
       // Additionally we should leave at least 1 lovelace for every excluded cheque.
       let min_self_sent = self_received.1st - other_deposit + list.length(self_received.3rd)
       // Again we should be able to cover all raised cheques from our deposit.
       // We also leave some margin for possible excluded cheques.
       let max_self_sent = self_received.1st + self_deposit - max_chqs_self_sent
+
+      trace @"gen_snapshot: self_received": self_received
+      trace @"gen_snapshot: min_self_sent": min_self_sent
+      trace @"gen_snapshot: max_self_sent": max_self_sent
 
       let self_sent <- and_then(gen_squash(
         max_chqs_self_sent,
@@ -144,7 +161,12 @@ pub fn gen_snapshot(
       // The cheques issued by the other party have be covered by his deposit.
       let min_self_sent = max(prev_self_sent.1st, self_received.1st - other_deposit + list.length(self_received.3rd))
       // Again we should be able to cover all raised cheques from our deposit.
-      let max_self_sent = self_received.1st + self_deposit - max_chqs_self_sent
+      let max_self_sent = max(min_self_sent, self_received.1st + self_deposit - max_chqs_self_sent)
+
+      trace @"gen_snapshot: self_received": self_received
+      trace @"gen_snapshot: prev_self_sent": prev_self_sent
+      trace @"gen_snapshot: min_self_sent": min_self_sent
+      trace @"gen_snapshot: max_self_sent": max_self_sent
 
       let self_sent <- and_then(gen_squash(
         max_chqs_self_sent,
@@ -154,6 +176,13 @@ pub fn gen_snapshot(
       ))
       fuzz.constant((self_received, self_sent))
     }
+  })
+  // From l1 spec:
+  // So the squash of the cheques received by the smaller verification key is first.
+  // The ordering is important.
+  when keysOrder is {
+    SelfKeySmaller -> fuzz.constant((self_received, self_sent))
+    SelfKeyLarger -> fuzz.constant((self_sent, self_received))
   }
 }
 
@@ -162,12 +191,12 @@ pub const empty_snapshot: t.Snapshot = (empty_squash, empty_squash)
 // Signature verification is patched during benchmarking
 // through `env/testing.ak`
 const signature = list.repeat(#"00", 64) |> list.reduce(#"", append_bytearray)
-// Because during testing we don't resolve locks we can mock that
-const htlc_lock = list.repeat(#"00", 32) |> list.reduce(#"", append_bytearray)
 // Because during testing we do not really check the signature
 // under the original htlc we don't have to worry about producing
 // a valid htlc_lock from the secret.
 const htlc_secret = t.Sha2_256Secret(list.repeat(#"00", 32) |> list.reduce(#"", append_bytearray))
+// Precomputed lock for the above secret
+const htlc_lock: t.HtlcLock = #"66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"
 
 pub fn mk_signed(x: a) -> Signed<a> {
   (x, signature)
@@ -175,7 +204,7 @@ pub fn mk_signed(x: a) -> Signed<a> {
 
 fn gen_cheque_expiration(validity_range: ExclusiveValidityRange) {
   expect ExclusiveValidityRange { lb: Some(past_point), ub: Some(future_point) } = validity_range
-  let delta <- and_then(fuzz.int_between(0, max_expiration))
+  let delta <- and_then(fuzz.int_between(min_expiration, max_expiration))
   fuzz.constant(max(past_point + delta, future_point + 10))
 }
 
@@ -272,8 +301,10 @@ pub type SquashIdx {
   SecondSquash
 }
 
-// `[lb, ub)`.
-
+// Given a snapshot and indication which squash belongs to the
+// receipt submitter (contains sum of received cheques) create a
+// corresponding set of received cheques and put together a
+// proper `Receipt`.
 pub fn gen_receipt(
   snapshot: t.Snapshot,
   max_cheques: Int,
@@ -603,19 +634,6 @@ pub fn mk_pend(receipt_cheqs: List<Signed<t.Cheque>>) -> t.Pend {
   )
 }
 
-// pub fn gen_validity_range(
-//   lb_spec: GenBoundSpec,
-//   ub_spec: GenBoundSpec,
-// ) -> Fuzzer<Interval<PosixMilliseconds>> {
-//   let lb <- and_then(gen_lb(lb_spec))
-//   let ub <- and_then(gen_ub(ub_spec))
-// 
-//   let lower_bound = IntervalBound { bound_type: lb, is_inclusive: False }
-//   let upper_bound = IntervalBound { bound_type: ub, is_inclusive: False }
-//   fuzz.constant(Interval { lower_bound, upper_bound })
-// }
-
-
 pub fn gen_close_step_tx(own_hash, max_cheques, validity_range, possible_channel_output: Option<tx.Output>) -> Fuzzer<(Tx, ByOpener, Receipt)> {
   // Generate and parse the channel input
 
@@ -634,32 +652,40 @@ pub fn gen_close_step_tx(own_hash, max_cheques, validity_range, possible_channel
 
   let close_by_opener <- and_then(fuzz.bool())
   trace @"close_by_opener": close_by_opener
+  let keys_out =
+    if close_by_opener {
+      keys_in
+    } else {
+      (keys_in.2nd, keys_in.1st)
+    }
+  let (self_key, other_key) = keys_out
+
+  let amt_closer_in =
+    if close_by_opener {
+      tot_in - amt_non_opener_in
+    } else {
+      amt_non_opener_in
+    }
 
   trace @"Generating snapshot"
-  let sn_out <- and_then(gen_snapshot(amt_non_opener_in, tot_in - amt_non_opener_in, max_cheques, Some(sn_in)))
+  let keys_order = mk_keys_order(self_key, other_key)
+  let sn_out <- and_then(gen_snapshot(amt_closer_in, tot_in - amt_closer_in, max_cheques, keys_order, Some(sn_in)))
   trace @"Snapshot generated": sn_out
 
-  let (closer_squash, non_closer_squash) =
-    when (close_by_opener, less_than_bytearray(keys_in.1st, keys_in.2nd)) is {
-      // opener is closing and opener squash is first
-      (True, True) -> sn_out
-      // non-opener is closing and non-opener squash is first
-      (False, False) -> sn_out
-      // non-opener is closing and opener squash is first
-      (False, True) -> (sn_out.2nd, sn_out.1st)
-      // opener is closing and non-opener squash is first
-      (True, False) -> (sn_out.2nd, sn_out.1st)
-    }
+  let (squash_received, squash_sent) = when keys_order is {
+    SelfKeySmaller -> sn_out
+    SelfKeyLarger -> (sn_out.2nd, sn_out.1st)
+  }
+  // The closer current net income from the squashes
+  let squash_diff = squash_received.1st - squash_sent.1st
 
   let receipt <-
     and_then(
       {
-        let which_sq =
-          if closer_squash == sn_out.1st {
-            FirstSquash
-          } else {
-            SecondSquash
-          }
+        let which_sq = when keys_order is {
+          SelfKeySmaller -> FirstSquash
+          SelfKeyLarger -> SecondSquash
+        }
         let non_closer_deposit = if close_by_opener {
           amt_non_opener_in
         } else {
@@ -667,50 +693,11 @@ pub fn gen_close_step_tx(own_hash, max_cheques, validity_range, possible_channel
         }
         // FIXME: Not sure if this kind of approximation is good enough.
         // Should we take into the account also excluded cheques in here?
-        let max_cheques_amount = non_closer_deposit + (non_closer_squash.1st - closer_squash.1st)
+        let max_cheques_amount = non_closer_deposit - squash_diff
         gen_receipt(sn_out, max_cheques, max_cheques_amount, which_sq, validity_range)
       }
     )
   trace @"receipt": receipt
-
-  let amt_in =
-    if close_by_opener {
-      tot_in - amt_non_opener_in
-    } else {
-      amt_non_opener_in
-    }
-
-  let keys_out =
-    if close_by_opener {
-      keys_in
-    } else {
-      (keys_in.2nd, keys_in.1st)
-    }
-
-  // The tx builder should pick an upper bound which proves
-  // that none of the timeouts of the cheques passed.
-  // let possible_min_receipt_timeout = {
-  //   let (_, signed_cheques) = receipt
-  //   signed_cheques
-  //     |> list.filter_map(fn(signed_cheque) {
-  //       when signed_cheque.1st is {
-  //         t.Htlc(_, timeout, _, _) -> Some(timeout)
-  //         t.HtlcUnlocked(_, timeout, _, _) -> Some(timeout)
-  //         _ -> None
-  //       }
-  //     })
-  //     |> list.reduce(None, fn (acc, timeout) {
-  //       when acc is {
-  //         None -> Some(timeout)
-  //         Some(acc_timeout) ->
-  //           if timeout < acc_timeout {
-  //             Some(timeout)
-  //           } else {
-  //             Some(acc_timeout)
-  //           }
-  //       }
-  //     })
-  // }
 
   expect ExclusiveValidityRange { lb: _, ub: Some(ub) } = validity_range
   let timeout = ub + period_in
@@ -724,9 +711,15 @@ pub fn gen_close_step_tx(own_hash, max_cheques, validity_range, possible_channel
       }
     })
     |> list.reduce(0, fn(acc, amt) { acc + amt })
-  let sq_diff = closer_squash.1st - non_closer_squash.1st
-  let amt_closer_out = amt_in + chqs_amt + sq_diff
-  let stage_out = t.Closed(amt_closer_out, non_closer_squash, timeout, pend_out)
+  let amt_closer_out = amt_closer_in + chqs_amt + squash_diff
+
+  trace @"gen_close_step_tx: amt_closer_in": amt_closer_in
+  trace @"gen_close_step_tx: squash_diff": squash_diff
+  trace @"gen_close_step_tx: chqs_amt": chqs_amt
+  trace @"gen_close_step_tx: amt_closer_out": amt_closer_out
+
+  expect amt_closer_out >= 0
+  let stage_out = t.Closed(amt_closer_out, squash_sent, timeout, pend_out)
   let Output { address: _, value, datum: _, reference_script: _ } = prev_channel_output
   let output =
     tx.Output(
@@ -751,27 +744,31 @@ pub fn gen_close_step_tx(own_hash, max_cheques, validity_range, possible_channel
   ))
 }
 
+// TODO: This can be simplified I believe.
+// We need just a validity range which:
+// * is "non negative"
+// * have some wiggle room for the transaction submission
+pub fn gen_safe_close_step_validity_range() {
+  let now = 2 * max_period + 20 * day
+  let ub = now - max_period - 1
+  let tx_submission_margin <- and_then(fuzz.int_between(hour, day))
+  let lb = ub - tx_submission_margin
+  fuzz.constant(ExclusiveValidityRange(Some(lb), Some(ub)))
+}
+
 pub fn gen_close_steps_transaction(
   own_hash,
   max_cheques,
   n_steps,
 ) -> Fuzzer<(Transaction, MintRedeemer)> {
-  let gen_validity_range_from_respond_timeout = fn (timeout, respond_period) -> Fuzzer<ExclusiveValidityRange> {
-      let ub = timeout - respond_period - 1
-      let tx_submission_margin <- and_then(fuzz.int_between(hour, day))
-      let lb = ub - tx_submission_margin
-      fuzz.constant(ExclusiveValidityRange(Some(lb), Some(ub)))
-  }
-  let arbirary_timeout = 2 * max_period + 20 * day
-  let validity_range <- and_then(gen_validity_range_from_respond_timeout(arbirary_timeout, max_period))
-  let txs_with_receipts <- and_then(fuzz_contrib.foldr(
-    list.range(0, n_steps),
-    [],
-    fn(_idx, acc) {
-      let tx_with_receipt <- and_then(gen_close_step_tx(own_hash, max_cheques, validity_range, None))
-      fuzz.constant(acc |> list.push(tx_with_receipt))
-    },
-  ))
+  let validity_range <- and_then(gen_safe_close_step_validity_range())
+  let txs_with_receipts <-
+    and_then(
+      fuzz_contrib.traverse_list(
+        list.range(0, n_steps),
+        fn(_) { gen_close_step_tx(own_hash, max_cheques, validity_range, None) }
+      ),
+    )
   let tx =
     txs_with_receipts
       |> list.map(fn((t, _, _)) { t })
@@ -791,79 +788,124 @@ fn sum_pend(pend) {
   list.reduce(pend, 0, fn(acc, (amt, _, _)) { acc + amt })
 }
 
+fn received_and_sent(keys_order: KeysOrder, sn: t.Snapshot) {
+  when keys_order is {
+    SelfKeySmaller -> sn
+    SelfKeyLarger -> (sn.2nd, sn.1st)
+  }
+}
+
+pub type MkRespondTimeout {
+  MkElapsedTimeout
+  MkNotYetElapsedTimeout
+}
+
+// Creates a close step based on validity range so we 
+// how to construct proper validity range:
+pub fn gen_close_step_tx_for_validity_range(
+  own_hash,
+  max_cheques,
+  validity_range: ExclusiveValidityRange,
+  mk_respond_timeout: MkRespondTimeout
+) {
+  let out_ref <- and_then(cardano.output_reference())
+  let new_channel_output <- and_then(gen_new_channel_output(own_hash, out_ref, 0, 1))
+  expect Some((_, _, t.Opened(_, _, period_in), _, _)) =
+    parse_cl_output(new_channel_output)
+  expect ExclusiveValidityRange { lb: Some(now), ub: Some(_future) } = validity_range
+  let closing_validity_range = when mk_respond_timeout is {
+    MkElapsedTimeout -> ExclusiveValidityRange(
+      Some(now - period_in - 1000),
+      // Based on this `ub` the respond timeout is computed
+      // It should be `ub + period_in >= respond_timeout`
+      Some(now - period_in - 1),
+    )
+    MkNotYetElapsedTimeout -> ExclusiveValidityRange(
+      Some(now - period_in + 10),
+      Some(now - period_in + 1000),
+    )
+  }
+  //  Generate a prior close state (simulates a valid close output as input).
+  expect (close_tx, _closed_by_opener, (Some((closing_sn, _sig)), _chqs)) <-
+    and_then(gen_close_step_tx(own_hash, max_cheques, closing_validity_range, Some(new_channel_output)))
+  fuzz.constant((close_tx, closing_sn))
+}
+
 pub fn gen_respond_step_tx(
   own_hash,
   max_cheques,
   validity_range: ExclusiveValidityRange,
 ) -> Fuzzer<(Tx, t.DropOld, t.Receipt)> {
-  expect (close_tx, closed_by_opener, (Some((closing_sn, _sig)), _chqs)) <-
-    and_then(gen_close_step_tx(own_hash, max_cheques, validity_range, None))
-
+  let (close_tx, closing_sn) <- and_then(gen_close_step_tx_for_validity_range(own_hash, max_cheques, validity_range, MkNotYetElapsedTimeout))
   expect Some((
     _own_address,
     keys,
-    t.Closed(amt_closer_in, sq_in, timeout, pend0_in),
+    t.Closed(amt_closer_in, sq_in, respond_timeout, pend_closer_in),
     cid,
     lovelace_in,
   )) = parse_singleton_step_tx(close_tx)
 
-  // other is closer and self is responder
-  let (other, self) = keys
-  let (closing_received, closing_sent) = received_and_sent(self, other, closing_sn)
+  expect ExclusiveValidityRange { lb: Some(now), ub: Some(future) } = validity_range
 
+  // Release own pending cheques which are expired if requested
   let drop_old <- and_then(fuzz.bool())
-  let past = timeout - 10
-  let future = timeout + 10
-
-  let pend0_out =
+  let pend_closer_out =
     if drop_old {
-      // Keep only none expired cheques
-      pend0_in |> list.filter(fn((_, t, _)) { t > past })
+      pend_closer_in |> list.filter(fn((_, t, _)) { t > now })
     } else {
-      pend0_in
+      pend_closer_in
     }
-  // * closer (keys.1st) already delivered their receipt.
-  // * It is non-closer (keys.2nd) turn.
-  // * We are creating a new snapshot `sn` which contains the closer
-  // squash untouched (it is ignored anyway)
-  // * We create a newer squash of the non-closer/responder.
-  let (receipt, received_squash) <- and_then({
-    // pub fn gen_squash(
-    //   max_chqs,
-    //   min_sq_amt: Amount,
-    //   max_sq_amt: Amount,
-    //   prev_squash: Option<t.Squash>
-    // )
-    // 
-    let min_self_sent = closing_received.1st - other_deposit + list.length(self_received.3rd)
-    // Again we should be able to cover all raised cheques from our deposit.
-    // We also leave some margin for possible excluded cheques.
-    let max_self_sent = self_received.1st + self_deposit - max_chqs_self_sent
 
-    let new_sq <- and_then(gen_squash(
+  let (other, self) = keys // as `keys = (closer, non-closer)`
+  let keys_order = mk_keys_order(self, other)
+  let (closing_received, closing_sent) = received_and_sent(keys_order, closing_sn)
+  let (receipt, new_received) <- and_then({
+    // During the respond step non-closer provides possibly a newer snapshot.
+    //
+    // Even if this newer snapshot contains updated squash which was sent by
+    // the non-closer it is ignored because that is clearly invalid (closer should not
+    // not accept more cheques after close) and non-incentivised so should not
+    // happen in practice.
+    //
+    // On the other hand the squash which was received by the non-closer is taken
+    // into account as closer had no incentive to provide that one with the largest
+    // amount. The incentive of non-closer now is to provide the latest received squash
+    // with the largest total and as many cheques from the closer as possible.
+    let min_sq_received = closing_received.1st
+    // amt_closer_in is the minimal balance owned by the closer
+    // if he had no other pending liabilities at the moment of closing
+    // (all sent cheques were expired or something like that).
+    // The below amount could be larger then what we assume here
+    // because some cheques sent by closer could expired in between
+    // so the closer could issue more cheques to the non-closer.
+    // We ignore that possibility for simplicity.
+    let max_sq_received = min_sq_received + amt_closer_in
+
+    trace @"gen_respond_step_tx: min_sq_received": min_sq_received
+    trace @"gen_respond_step_tx: max_sq_received": max_sq_received
+
+    let new_received <- and_then(gen_squash(
       max_cheques,
-      min_sq_amt,
-      max_sq_amt,
-      Some(sq_in)
+      min_sq_received,
+      max_sq_received,
+      Some(closing_received)
     ))
-    // Let's round down so our total cheque amount will be limited by the
-    // snapshot state, 0 value cheques should not break any invariant but
-    // let's try to avoid them.
-    // `pend0_out` are possible liabilities of the responder.
-    // Let's assume that those are at least 1 lovelace.
-    // `amt0_in` is the closer money after closing squash application.
-    let max_cheques_amount = amt0_in - list.length(pend0_out)
+    let max_cheques_amount = amt_closer_in - (new_received.1st - closing_received.1st)
     let receipt:t.Receipt <- and_then({
-      if less_than_bytearray(keys.1st, keys.2nd) {
-        let sn = (closing_sq0, new_sq)
-        gen_receipt(sn, max_cheques, max_cheques_amount, SecondSquash)
-      } else {
-        let sn = (new_sq, closing_sq1)
-        gen_receipt(sn, max_cheques, max_cheques_amount, FirstSquash)
+      when keys_order is {
+        SelfKeySmaller -> {
+          let sn = (new_received, closing_sent)
+          gen_receipt(sn, max_cheques, max_cheques_amount, FirstSquash, validity_range)
+        }
+        SelfKeyLarger -> {
+          let sn = (closing_sent, new_received)
+          gen_receipt(sn, max_cheques, max_cheques_amount, SecondSquash, validity_range)
+        }
       }
     })
-    fuzz.constant((receipt, new_sq))
+    fuzz.constant((receipt, new_received))
   })
+
   let close_out_ref <- and_then(cardano.output_reference())
   expect Tx {
     inputs: _i,
@@ -873,10 +915,10 @@ pub fn gen_respond_step_tx(
   } = close_tx
   let tx.Output { address: own_addr, .. } = close_output
   let input = tx.Input(close_out_ref, close_output)
-  let pend1_out = mk_pend(receipt.2nd)
+  let pend_non_closer_out = mk_pend(receipt.2nd)
 
-  let amt0_out = {
-    let sq_diff = received_squash.1st - sq_in.1st
+  let amt_closer_out = {
+    let sq_diff = new_received.1st - closing_received.1st
     let chqs_amt = receipt.2nd
       |> list.filter_map(fn(signed_cheque) {
         when signed_cheque.1st is {
@@ -893,14 +935,14 @@ pub fn gen_respond_step_tx(
         }
       })
       |> list.reduce(0, fn(acc, amt) { acc + amt })
-    amt0_in - sq_diff - chqs_amt
+    amt_closer_in - sq_diff - chqs_amt
   }
 
   // The amount of money left should cover the closer's account
   // (which *should* be larger than closer's liabilities).
   // We should also secure possible liabilities of the non-closer.
   let lovelace_out = {
-    let lo = amt0_out + sum_pend(pend1_out)
+    let lo = amt_closer_out + sum_pend(pend_non_closer_out)
     if lo == 0 {
       // On the chain some lovelace will be naturally secured
       // because of the minUTxO rule.
@@ -919,7 +961,7 @@ pub fn gen_respond_step_tx(
     tx.Output(
       own_addr,
       total_out,
-      InlineDatum((own_hash, keys, t.Responded(amt0_out, pend0_out, pend1_out))),
+      InlineDatum((own_hash, keys, t.Responded(amt_closer_out, pend_closer_out, pend_non_closer_out))),
       None,
     )
   let payout_output_value = assets.from_lovelace(lovelace_in - lovelace_out)
@@ -943,32 +985,130 @@ pub fn gen_respond_step_tx(
   )
 }
 
-// pub fn gen_respond_steps_transaction(
-//   own_hash,
-//   max_cheques,
-//   n_steps,
-// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
-//   let txs_with_receipts <-
-//     and_then(
-//       fuzz_contrib.traverse_list(
-//         list.range(0, n_steps),
-//         fn(_) { gen_respond_step_tx(own_hash, max_cheques) },
-//       ),
-//     )
-//   let tx =
-//     txs_with_receipts
-//       |> list.map(fn((t, _d, _r)) { t })
-//       |> list.reduce(mempty_tx, tx_mappend)
-//   let transaction = tx |> tx_to_transaction
-//   let redeemer =
-//     (
-//       None,
-//       txs_with_receipts
-//         |> list.map(fn((_t, d, r)) { t.Continuing(t.Respond(r, d)) }),
-//     )
-//   fuzz.constant((transaction, redeemer))
-// }
-// 
+pub fn gen_respond_steps_transaction(
+  own_hash,
+  max_cheques,
+  n_steps,
+) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+  expect ExclusiveValidityRange(Some(close_lb), Some(close_ub)) <- and_then(gen_safe_close_step_validity_range())
+  let validity_range = ExclusiveValidityRange(Some(close_lb + max_period), Some(close_ub + max_period))
+
+  let txs_with_receipts <-
+    and_then(
+      fuzz_contrib.traverse_list(
+        list.range(0, n_steps),
+        fn(_) { gen_respond_step_tx(own_hash, max_cheques, validity_range) },
+      ),
+    )
+  let tx =
+    txs_with_receipts
+      |> list.map(fn((t, _, _)) { t })
+      |> list.reduce(mempty_tx, tx_mappend)
+  let transaction = tx |> tx_to_transaction
+  let redeemer =
+    (
+      None,
+      txs_with_receipts
+        |> list.map(fn((_t, d, r)) { t.Continuing(t.Respond(r, d)) }),
+    )
+  fuzz.constant((transaction, redeemer))
+}
+
+pub fn gen_elapse_step_tx(
+  own_hash,
+  max_cheques,
+  validity_range: ExclusiveValidityRange,
+) -> Fuzzer<(Tx, t.Secrets)> {
+  let (close_tx, _closing_sn) <-
+    and_then(gen_close_step_tx_for_validity_range(own_hash, max_cheques, validity_range, MkElapsedTimeout))
+
+  expect Some((
+    own_address,
+    keys_in,
+    t.Closed(amt_closer_in, _sq_in, respond_timeout, pend_closer_in),
+    cid,
+    tot_in,
+  )) = parse_singleton_step_tx(close_tx)
+
+  expect ExclusiveValidityRange { lb: Some(now), ub: Some(_future) } = validity_range
+  trace @"gen_elapse_step_tx: now": now
+  trace @"gen_elapse_step_tx: respond_timeout": respond_timeout
+  expect now > respond_timeout
+
+  // If pend possibly cover reminder and we resolve them all
+  // then this operation should be actually `end`.
+  let pend_cover_reminder = sum_pend(pend_closer_in) == tot_in - amt_closer_in
+  trace @"gen_elapse_step_tx: pend_cover_reminder": pend_cover_reminder
+  let secrets_idxs <- and_then({
+    let possible_idxs <- and_then(fuzz_contrib.traverse_list(
+      list.range(0, list.length(pend_closer_in) - 1),
+      fn(idx) {
+        let resolve <- and_then(fuzz.bool())
+        if resolve {
+          fuzz.constant(Some(idx))
+        } else {
+          fuzz.constant(None)
+        }
+      }
+    ))
+    let idxs = possible_idxs |> list.filter_map(fn(o) { o })
+    if pend_cover_reminder && list.length(idxs) == list.length(pend_closer_in) {
+      let idx_to_drop <- and_then(fuzz.int_between(0, list.length(possible_idxs) - 1))
+      fuzz.constant(idxs |> list.indexed_map(fn(i, v) { (i, v) }) |> list.filter(fn((i, _)) { i != idx_to_drop }) |> list.map(fn((_, v)) { v }))
+    } else {
+      fuzz.constant(idxs)
+    }
+  })
+  let secrets = secrets_idxs |> list.map(fn(idx) { (idx, htlc_secret) })
+  let pend_closer_out = pend_closer_in |> list.indexed_foldr([], fn(idx, (amt, t, lock), acc) {
+    if t > now && !(list.has(secrets_idxs, idx)) {
+      list.push(acc, (amt, t, lock))
+    } else {
+      acc
+    }
+  })
+  let amt_freed = sum_pend(pend_closer_in) - sum_pend(pend_closer_out)
+  // Leave at least one lovelace - this will be enforced by min ADA ledger rule
+  // Without this 1 lovelace parsing of the UTxO fails.
+  // TODO: Should we actually change the protocol so full drain is possible here?
+  let tot_out = tot_in - amt_closer_in - amt_freed
+
+  trace @"gen_elapse_step_tx: amt_closer_in": amt_closer_in
+  trace @"gen_elapse_step_tx: amt_freed": amt_freed
+  trace @"gen_elapse_step_tx: tot_in": tot_in
+  trace @"gen_elapse_step_tx: tot_out": tot_out
+
+  expect Tx { inputs: _, outputs: [close_output], signatories: _, validity_range: _ } = close_tx
+  let close_out_ref <- and_then(cardano.output_reference())
+  let input = tx.Input(close_out_ref, close_output)
+
+  let stage_out = t.Elapsed(pend_closer_out)
+  let output = tx.Output(
+    own_address,
+    assets.from_lovelace(tot_out) |> assets.add(own_hash, token.cid_to_token(cid), 1),
+    InlineDatum((own_hash, keys_in, stage_out)),
+    None,
+  )
+
+  let signatory = blake2b_224(keys_in.1st)
+  let tx = Tx([input], [output], [signatory], validity_range)
+  fuzz.constant((tx, secrets))
+}
+
+pub fn gen_elapse_steps_transaction(
+  own_hash,
+  max_cheques,
+  n_steps,
+) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+  // It doesn't hurt to have validity range which has some extra margin
+  let validity_range <- and_then(gen_safe_close_step_validity_range())
+  let txs_with_secrets <- and_then(fuzz_contrib.traverse_list(list.range(0, n_steps), fn(_) { gen_elapse_step_tx(own_hash, max_cheques, validity_range) }))
+  let tx = txs_with_secrets |> list.map(fn((t, _)) { t }) |> list.reduce(mempty_tx, tx_mappend)
+  let transaction = tx |> tx_to_transaction
+  let redeemer = (None, txs_with_secrets |> list.map(fn((_, secrets)) { t.Continuing(t.Elapse(secrets)) }))
+  fuzz.constant((transaction, redeemer))
+}
+
 // // pub type Stage {
 // //   Opened(Amount, Snapshot, Period)
 // //   Closed(Amount, Squash, Timeout, Pend)
@@ -1032,5 +1172,42 @@ pub fn gen_respond_step_tx(
 // //   )) = parse_singleton_step_tx(respond_tx)
 // // 
 // // }
+// 
+// 
+
+// Add these helpers near gen_elapse_step_tx for pend reductions (adapted from step.ak logic for generation)
+
+pub type ResolvePendsStrategy {
+  AllowFullResolution
+  AtLeastOneUnresolved
+}
+
+// Helper to generate secrets that reduce pend (select subset of indices, assign matching secrets)
+// pub fn gen_secrets_for_pend(pend: t.Pend, resolve_strategy: ResolvePendsStrategy) -> Fuzzer<t.Secrets> {
+//   let possible_idxs <- and_then(fuzz.int_between(0, list.length(pend)))
+//   let max_idxs = if resolve_strategy == AllowFullResolution {
+//     possible_idxs
+//   } else {
+//     max(1, possible_idxs - 1)
+//   }
+//   let idxs <- and_then(fuzz_contrib.many_of(possible_idxs, list.range(0, list.length(pend) - 1)))
+//   fuzz.constant(idxs |> list.map(fn(idx) { (idx, htlc_secret) })) // Mock secret matches lock in tests
+// }
+
+// By closer release the account assets and possibly some pends
+// pub fn gen_resolve_for_responded_tx(
+//   own_hash,
+//   max_cheques,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets)> {
+//   let (respond_tx, _drop_old, _receipt) <-
+//     and_then(gen_respond_step_tx(own_hash, max_cheques, validity_range))
+//   expect Some((
+//     own_address,
+//     keys_in,
+//     t.Responded(amt_closer_in, pend0_in, pend1_in),
+//     cid,
+//     tot_in,
+//   )) = parse_singleton_step_tx(respond_tx)
 // 
 // 

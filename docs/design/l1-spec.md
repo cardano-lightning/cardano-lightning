@@ -918,7 +918,7 @@ pub fn do_elapse(
   - Elapse.Out.2 : Amount `tot_out`
 
 - Elapse.Con : Constraints
-  - Elapse.Con.0 : `keys_in.0` has signed the tx
+  - Elapse.Con.0 : `keys_in.0` (closer) has signed the tx
   - Elapse.Con.1 : `timeout_in < lb` (respond period has passed)
   - Elapse.Con.2 : `pend` is reduced from `pend_in` using provided secrets and
     results in `amt_freed`

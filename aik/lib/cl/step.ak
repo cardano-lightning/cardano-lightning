@@ -26,21 +26,21 @@ fn has_vkh0(
     [] -> fail @"No vkh match"
   }
 }
-fn go_is_signer(vkh: VerificationKeyHash, signers: List<VerificationKeyHash>) -> Bool {
+fn is_vkh_signer(vkh: VerificationKeyHash, signers: List<VerificationKeyHash>) -> Bool {
   when signers is {
     [vkh0, ..rest] ->
       if vkh == vkh0 {
         True
       } else {
-        go_is_signer(vkh, rest)
+        is_vkh_signer(vkh, rest)
       }
     [] -> False
   }
 }
 
-fn is_signer(key: VerificationKey, signers: List<VerificationKeyHash>) -> Bool {
- let vkh = crypto.blake2b_224(key)
- go_is_signer(vkh, signers)
+fn is_vk_signer(vk: VerificationKey, signers: List<VerificationKeyHash>) -> Bool {
+ let vkh = crypto.blake2b_224(vk)
+ is_vkh_signer(vkh, signers)
 }
 
 fn has_vk0(keys: t.Keys, signers: List<VerificationKeyHash>) -> Bool {
@@ -265,7 +265,7 @@ pub fn do_close(
   }
   let closer_key = keys_out.1st
   let non_closer_key = keys_out.2nd
-  expect is_signer(closer_key, signers)
+  expect is_vk_signer(closer_key, signers)
   let (possible_snapshot, chqs) = receipt
   let snapshot_out =
     when possible_snapshot is {
@@ -360,7 +360,7 @@ pub fn do_respond(
 
   trace @"Respond.Con": @"Constraints"
   trace @"Respond.Con.0": @"`keys_in.1` has singed the tx - the step is executed by the non-closer"
-  expect is_signer(keys_in.2nd, signers)
+  expect is_vk_signer(keys_in.2nd, signers)
   let self = keys_in.2nd
   let other = keys_in.1st
   trace @"Respond.Con.1": @"`keys_in == keys_out`"
@@ -417,15 +417,27 @@ fn do_reduce_pend(
   secrets: t.Secrets,
   lb: PosixMilliseconds,
 ) -> Amount {
-  when (pend_in, secrets) is {
-    ([], _) -> {
+  when (pend_in) is {
+    [] -> {
       expect pend_out == []
       0
     }
-    ([(amt, timeout, lock), ..rest_in], [(secret_idx, secret), ..rest_secrets]) ->
-      if curr_idx == secret_idx {
-        // We found the indexed position - verify secret
-        if lock == cheque.hash_htlc_secret(secret) {
+    [(amt, timeout, lock), ..rest_in] -> {
+      let possible_secret = when secrets is {
+        [(secret_idx, secret), ..rest_secrets] -> {
+          if curr_idx == secret_idx {
+            Some((secret, rest_secrets))
+          } else {
+            None
+          }
+        }
+        [] -> None
+      }
+      when possible_secret is {
+        Some((secret, rest_secrets)) -> {
+          // We found the indexed position - verify secret
+          expect lock == cheque.hash_htlc_secret(secret)
+          expect timeout < lb
           // Secret matches, skip this entry in output and add amount to total
           amt + do_reduce_pend(
             curr_idx + 1,
@@ -434,24 +446,19 @@ fn do_reduce_pend(
             rest_secrets,
             lb,
           )
-        } else {
-          fail @"Secret hash mismatch"
         }
-      } else {
-        if timeout < lb {
-          // Timeout has passed - skip this entry in output and add amount to total
-          do_reduce_pend(curr_idx + 1, rest_in, pend_out, secrets, lb)
-        } else {
-          // Not the indexed position - keep entry in output
-          expect [(amt_out, timeout_out, lock_out), ..rest_out] = pend_out
-          expect amt_out == amt && timeout_out == timeout && lock_out == lock
-          do_reduce_pend(curr_idx + 1, rest_in, rest_out, secrets, lb)
+        None -> {
+          if timeout < lb {
+            // Timeout has passed - skip this entry in output
+            do_reduce_pend(curr_idx + 1, rest_in, pend_out, secrets, lb)
+          } else {
+            // Not the indexed position - keep entry in output
+            expect [(amt_out, timeout_out, lock_out), ..rest_out] = pend_out
+            expect amt_out == amt && timeout_out == timeout && lock_out == lock
+            do_reduce_pend(curr_idx + 1, rest_in, rest_out, secrets, lb)
+          }
         }
       }
-    (rest_in, []) -> {
-      // No more secrets - verify remaining output matches input
-      expect rest_in == pend_out
-      0
     }
   }
 }
@@ -520,8 +527,9 @@ pub fn do_elapse(
   trace @"Elapse.Out.2": @"Amount `tot_out`"
 
   trace @"Elapse.Con": @"Constraints"
-  trace @"Elapse.Con.0": @"`keys_in.0` has signed the tx"
-  expect has_vk0(keys_in, signers)
+  trace @"Elapse.Con.0": @"`keys_in.0` (closer) has signed the tx"
+  let (closer, _) = keys_in
+  expect is_vk_signer(closer, signers)
 
   trace @"Elapse.Con.1": @"`timeout_in < lb` (respond period has passed)"
   expect timeout_in < lb

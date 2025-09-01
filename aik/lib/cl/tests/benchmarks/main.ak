@@ -77,23 +77,32 @@ bench bench_reduce_close_steps_transaction(
   main.mint(redeemer, own_hash, transaction)
 }
 
-// test test_reduce_respond_steps_tx(
-//   (transaction, redeemer) via gen.gen_respond_steps_transaction(
-//     own_hash,
-//     max_cheques,
-//     1,
-//   ),
-// ) {
-//   main.mint(redeemer, own_hash, transaction)
-// }
-// 
-// bench bench_reduce_respond_steps_tx(
-//   (transaction, redeemer) via gen.gen_respond_steps_transaction(
-//     own_hash,
-//     max_cheques,
-//     _,
-//   ),
-// ) {
-//   main.mint(redeemer, own_hash, transaction)
-// }
-// 
+test test_reduce_respond_steps_tx(
+  (transaction, redeemer) via gen.gen_respond_steps_transaction(
+    own_hash,
+    max_cheques,
+    1,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+bench bench_reduce_respond_steps_tx(
+  (transaction, redeemer) via gen.gen_respond_steps_transaction(
+    own_hash,
+    max_cheques,
+    _,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+test test_reduce_eplapse_steps_tx(
+  (transaction, redeemer) via gen.gen_elapse_steps_transaction(
+    own_hash,
+    max_cheques,
+    1,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
