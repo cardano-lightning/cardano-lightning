@@ -409,13 +409,12 @@ pub fn do_respond(
   tot_out >= amt0_out + sum_pend(pend1_out)
 }
 
-// We separated this helper so we can track `curr_idx` on the `pend_in` list.
-fn do_reduce_pend(
+fn do_reduce_received_pend(
   curr_idx: Int,
   pend_in: t.Pend,
   pend_out: t.Pend,
   secrets: t.Secrets,
-  lb: PosixMilliseconds,
+  ub: PosixMilliseconds,
 ) -> Amount {
   when (pend_in) is {
     [] -> {
@@ -437,25 +436,25 @@ fn do_reduce_pend(
         Some((secret, rest_secrets)) -> {
           // We found the indexed position - verify secret
           expect lock == cheque.hash_htlc_secret(secret)
-          expect timeout < lb
+          expect timeout > ub
           // Secret matches, skip this entry in output and add amount to total
-          amt + do_reduce_pend(
+          amt + do_reduce_received_pend(
             curr_idx + 1,
             rest_in,
             pend_out,
             rest_secrets,
-            lb,
+            ub,
           )
         }
         None -> {
-          if timeout < lb {
+          if timeout > ub {
             // Timeout has passed - skip this entry in output
-            do_reduce_pend(curr_idx + 1, rest_in, pend_out, secrets, lb)
+            do_reduce_received_pend(curr_idx + 1, rest_in, pend_out, secrets, ub)
           } else {
             // Not the indexed position - keep entry in output
             expect [(amt_out, timeout_out, lock_out), ..rest_out] = pend_out
             expect amt_out == amt && timeout_out == timeout && lock_out == lock
-            do_reduce_pend(curr_idx + 1, rest_in, rest_out, secrets, lb)
+            do_reduce_received_pend(curr_idx + 1, rest_in, rest_out, secrets, ub)
           }
         }
       }
@@ -463,16 +462,19 @@ fn do_reduce_pend(
   }
 }
 
-fn reduce_pend(
+// The below two reduction function have subtle but important difference in how they handle timeouts:
+// * When the user reduces received cheques he should prove that they are still valid so their timeout should be in the future. He should provide a `ub` which is smaller than the cheque timeout in such a case.
+// * When the user frees sent cheques he should prove that a given cheque which he signed is has expired. He should provide an `lb` which is larger than the cheque timeout in this case.
+fn reduce_received_pend(
   pend_in: t.Pend,
   pend_out: t.Pend,
   secrets: t.Secrets,
-  lb: PosixMilliseconds,
+  ub: PosixMilliseconds,
 ) -> Amount {
-  do_reduce_pend(0, pend_in, pend_out, secrets, lb)
+  do_reduce_received_pend(0, pend_in, pend_out, secrets, ub)
 }
 
-fn reduce_pend_by_timeout(
+fn reduce_sent_pend(
   pend_in: t.Pend,
   pend_out: t.Pend,
   lb: PosixMilliseconds,
@@ -486,13 +488,13 @@ fn reduce_pend_by_timeout(
       if timeout_in < lb {
         // Timeout has passed - skip this entry in the output.
         // Add its amount to the released amount.
-        amt_in + reduce_pend_by_timeout(rest_in, pend_out, lb)
+        amt_in + reduce_sent_pend(rest_in, pend_out, lb)
       } else {
         // Timeout has not passed - keep entry in the output
         // checking if it is honestly preserved
         expect
           amt_in == amt_out && timeout_in == timeout_out && lock_in == lock_out
-        reduce_pend_by_timeout(rest_in, rest_out, lb)
+        reduce_sent_pend(rest_in, rest_out, lb)
       }
     _ -> fail @"Pend mismatch"
   }
@@ -501,6 +503,7 @@ fn reduce_pend_by_timeout(
 pub fn do_elapse(
   signers: List<VerificationKeyHash>,
   lb: PosixMilliseconds,
+  ub: PosixMilliseconds,
   secrets: t.Secrets,
   tot_in: Amount,
   keys_in: t.Keys,
@@ -535,7 +538,7 @@ pub fn do_elapse(
   expect timeout_in < lb
 
   trace @"Elapse.Con.2": @"`pend` is reduced from `pend_in` using provided secrets and results in `amt_freed`"
-  let amt_freed = reduce_pend(pend_in, pend, secrets, lb)
+  let amt_freed = reduce_received_pend(pend_in, pend, secrets, ub)
 
   trace @"Elapse.Con.3": @"`tot_out == tot_in - amt_in - amt_freed`"
   tot_out == tot_in - amt_in - amt_freed
@@ -544,6 +547,7 @@ pub fn do_elapse(
 pub fn do_resolve(
   signers: List<VerificationKeyHash>,
   lb: PosixMilliseconds,
+  ub: PosixMilliseconds,
   secrets: t.Secrets,
   drop_old: Bool,
   keys_in: t.Keys,
@@ -592,12 +596,12 @@ pub fn do_resolve(
       expect has_vk0(keys_in, signers)
 
       trace @"Resolve.Con.2.1": @"`pend0_out` is `pend0_in` reduced by secrets"
-      let received_freed = reduce_pend(pend0_in, pend0_out, secrets, lb)
+      let received_freed = reduce_received_pend(pend0_in, pend0_out, secrets, ub)
 
       let sent_freed =
         if drop_old {
           trace @"Resolve.Con.2.2": @"If `drop_old` then `pend1_out` is reduced by timeout from `pend1_in` by `timeout < lb` resulting in `sent_freed`"
-          reduce_pend_by_timeout(pend1_in, pend1_out, lb)
+          reduce_sent_pend(pend1_in, pend1_out, lb)
         } else {
           trace @"Resolve.Con.2.3": @"Else `pend1_out == pend1_in`"
           expect pend1_out == pend1_in
@@ -616,6 +620,7 @@ pub fn do_resolve(
 pub fn do_free(
   signers: List<VerificationKeyHash>,
   lb: PosixMilliseconds,
+  ub: PosixMilliseconds,
   secrets: t.Secrets,
   drop_old: Bool,
   tot_in: Amount,
@@ -649,7 +654,7 @@ pub fn do_free(
       expect t.Closed(amt_out, squash_out, timeout_out, pend_out) = stage_out
 
       trace @"Free.Con.1.2": @"`pend_out` is reduced from `pend` using provided secrets and results in `amt_freed`"
-      let amt_freed = reduce_pend(pend_in, pend_out, secrets, lb)
+      let amt_freed = reduce_received_pend(pend_in, pend_out, secrets, ub)
 
       trace @"Free.Con.1.3": @"`amt_freed != 0` to prevent noop looping"
       expect amt_freed != 0
@@ -680,12 +685,12 @@ pub fn do_free(
       expect amt_out == amt_in
 
       trace @"Free.Con.2.3": @"`pend1_out` is reduced from `pend1_in` using provided secrets and results in `received_freed`"
-      let received_freed = reduce_pend(pend1_in, pend1_out, secrets, lb)
+      let received_freed = reduce_received_pend(pend1_in, pend1_out, secrets, ub)
 
       let sent_freed =
         if drop_old {
           trace @"Free.Con.2.4": @"If `drop_old` then `pend0_out` is reduced by timeout from `pend0_in` by `timeout < lb` resulting in `sent_freed`"
-          reduce_pend_by_timeout(pend0_in, pend0_out, lb)
+          reduce_sent_pend(pend0_in, pend0_out, lb)
         } else {
           trace @"Free.Con.2.5": @"Else `pend0_out == pend0_in`"
           expect pend0_out == pend0_in
@@ -707,7 +712,7 @@ pub fn do_free(
       expect t.Elapsed(pend_out) = stage_out
 
       trace @"Free.Con.3.2": @"`pend_out` is reduced from `pend` using provided secrets and results in `amt_freed`"
-      let amt_freed = reduce_pend(pend, pend_out, secrets, lb)
+      let amt_freed = reduce_received_pend(pend, pend_out, secrets, ub)
 
       trace @"Free.Con.3.3": @"`amt_freed != 0` to prevent noop looping"
       expect amt_freed != 0
@@ -723,12 +728,12 @@ pub fn do_free(
       if is_vk0 {
         trace @"Free.Con.3.1": @"If signed by `keys_in.0`"
         trace @"Free.Con.3.1.0": @"`pend0_out` is `pend0` reduced with secrets and results in `received_freed`"
-        let received_freed = reduce_pend(pend0_in, pend0_out, secrets, lb)
+        let received_freed = reduce_received_pend(pend0_in, pend0_out, secrets, ub)
 
         let sent_freed =
           if drop_old {
             trace @"Free.Con.3.1.1": @"If `drop_old` then `pend1_out` is `pend1_in reduced by `timeout < lb` resulting in `sent_freed`"
-            reduce_pend_by_timeout(pend1_in, pend1_out, lb)
+            reduce_sent_pend(pend1_in, pend1_out, lb)
           } else {
             trace @"Free.Con.3.1.2": @"Else `pend1_out == pend1_in`"
             expect pend1_out == pend1_in
@@ -745,12 +750,12 @@ pub fn do_free(
         trace @"Free.Con.4.2": @"If signed by `keys_in.1`"
 
         trace @"Free.Con.4.2.0": @"`pend1_out` is `pend1_in` reduced with secrets and results in `received_freed`"
-        let received_freed = reduce_pend(pend1_in, pend1_out, secrets, lb)
+        let received_freed = reduce_received_pend(pend1_in, pend1_out, secrets, ub)
 
         let sent_freed =
           if drop_old {
             trace @"Free.Con.4.2.1": @"If `drop_old` then `pend0_out` is `pend0_in reduced by `timeout < lb` resulting in `sent_freed`"
-            reduce_pend_by_timeout(pend0_in, pend0_out, lb)
+            reduce_sent_pend(pend0_in, pend0_out, lb)
           } else {
             trace @"Free.Con.4.2.2": @"Else `pend0_out == pend0_in`"
             expect pend0_out == pend0_in
@@ -776,6 +781,7 @@ pub fn do_end(
   signers: List<VerificationKeyHash>,
   secrets: t.Secrets,
   lb: PosixMilliseconds,
+  ub: PosixMilliseconds,
   tot_in: Amount,
   keys_in: t.Keys,
   stage_in: t.Stage,
@@ -796,10 +802,10 @@ pub fn do_end(
       expect has_vk0(keys_in, signers)
 
       trace @"End.Con.0.1": @"pend1 reduced by `timeout < lb` is empty"
-      let sent_freed = reduce_pend_by_timeout(pend1, [], lb)
+      let sent_freed = reduce_sent_pend(pend1, [], lb)
 
       trace @"End.Con.0.2": @"All pending cheques in `pend0` are unlocked with provided secrets and the total amount is positive"
-      let received_freed = reduce_pend(pend0, [], secrets, lb)
+      let received_freed = reduce_received_pend(pend0, [], secrets, ub)
 
       // TODO: Tautology to preserve the above side effecting evaluations - is this necessary?
       let amt_freed = sent_freed + received_freed
@@ -812,20 +818,20 @@ pub fn do_end(
         trace @"End.Con.1.0": @"If signed by `keys_in.0`"
 
         trace @"End.Con.1.0.0": @"`pend1 reduced by timeout < lb is empty`"
-        let sent_freed = reduce_pend_by_timeout(pend1, [], lb)
+        let sent_freed = reduce_sent_pend(pend1, [], lb)
 
         trace @"End.Con.1.0.1": @"All pending cheques in `pend0` are unlocked with provided secrets"
-        let received_freed = reduce_pend(pend0, [], secrets, lb)
+        let received_freed = reduce_received_pend(pend0, [], secrets, ub)
 
         trace @"End.Con.1.0.2": @"`tot_in == received_freed + sent_freed` so non-closer locked assets are protected"
         tot_in == received_freed + sent_freed
       } else {
         trace @"End.Con.1.1": @"If signed by `keys_in.1`:"
         trace @"End.Con.1.1.0": @"`pend0 reduced by timeout < lb is empty`"
-        let sent_freed = reduce_pend_by_timeout(pend0, [], lb)
+        let sent_freed = reduce_sent_pend(pend0, [], lb)
 
         trace @"End.Con.1.1.1": @"All pending cheques in `pend1` are unlocked with provided secrets"
-        let received_freed = reduce_pend(pend1, [], secrets, lb)
+        let received_freed = reduce_received_pend(pend1, [], secrets, ub)
 
         // TODO: Tautology to preserve the above side effecting evaluations - is this necessary?
         let amt_freed = sent_freed + received_freed
