@@ -132,7 +132,7 @@ pub fn reduce(
                     t.Elapse(secrets) ->
                       do_elapse(
                         signers,
-                        exclusive_lower_bound(validity_range),
+                        exclusive_upper_bound(validity_range),
                         secrets,
                         tot_in,
                         keys_in,
