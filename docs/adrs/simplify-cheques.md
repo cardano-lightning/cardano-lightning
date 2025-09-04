@@ -1,10 +1,8 @@
 ---
 title: "Simplify Cheques"
-status: proposed
-authors: "@you"
-date: 2025-01-01
-tags:
-  - optional
+status: approved
+authors: "@waalge"
+date: 2025-09-04
 ---
 
 ## Context
