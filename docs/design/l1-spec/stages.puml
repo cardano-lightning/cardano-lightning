@@ -70,8 +70,8 @@ Responded --> [*] : <b>end</b>\nby closer
 Elapsed --u-> Elapsed : <b>free</b>\nby closer
 Elapsed --d-> Resolved : <b>resolve</b>\nby non-closer
 note on link
-  * Releases account assets but covering his liabilities.
-  * Non-closer `Pend` is empty - we ignored them during `elapse`.
+  * Releases account assets but still covering remaining liabilities.
+  * Non-closer `Pend` is empty - it was discarded (as "penalty") during the previous `elapse`.
 end note
 Elapsed --d-> [*] : <b>end</b>
 note on link
