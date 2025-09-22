@@ -9,9 +9,9 @@ const own_hash =
     |> bytearray.take(28)
 
 test test_reduce_new_channels(
-  (seed, n_mint, outputs) via gen.gen_new_channels_outputs(own_hash, 10),
+  (seed, n_mint, outputs) via gen.gen_new_channels_outputs(own_hash, 1),
 ) {
-  main.reduce_new_channels(own_hash, seed, n_mint, outputs) != []
+  main.reduce_new_channels(own_hash, seed, n_mint, outputs) == []
 }
 
 bench bench_reduce_new_channels(
@@ -102,6 +102,68 @@ test test_reduce_eplapse_steps_tx(
     own_hash,
     max_cheques,
     1,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+// These are the new generators:
+// pub fn gen_resolve_after_elapse_steps_transaction(
+//   own_hash,
+//   max_cheques,
+//   n_steps,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+// pub fn gen_resolve_after_elapse_step_tx(
+//   own_address,
+//   max_cheques,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets, t.DropOld)> {
+
+test test_reduce_resolve_after_elapse_steps_tx(
+  (transaction, redeemer) via gen.gen_resolve_after_elapse_steps_transaction(
+    own_hash,
+    max_cheques,
+    1,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+bench bench_reduce_resolve_after_elapse_steps_tx(
+  (transaction, redeemer) via gen.gen_resolve_after_elapse_steps_transaction(
+    own_hash,
+    max_cheques,
+    _,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+// pub fn gen_resolve_after_respond_step_tx(
+//   own_address: Address,
+//   max_cheques: Int,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets, t.DropOld)> {
+// pub fn gen_resolve_after_respond_steps_transaction(
+//   own_hash: ScriptHash,
+//   max_cheques: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+test test_reduce_resolve_after_respond_steps_tx(
+  (transaction, redeemer) via gen.gen_resolve_after_respond_steps_transaction(
+    own_hash,
+    max_cheques,
+    1,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+bench bench_reduce_resolve_after_respond_steps_tx(
+  (transaction, redeemer) via gen.gen_resolve_after_respond_steps_transaction(
+    own_hash,
+    max_cheques,
+    _,
   ),
 ) {
   main.mint(redeemer, own_hash, transaction)

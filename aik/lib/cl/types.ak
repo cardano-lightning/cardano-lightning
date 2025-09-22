@@ -2,6 +2,7 @@ use aiken/collection.{Index}
 use aiken/crypto.{ScriptHash, VerificationKey}
 use cardano/transaction.{OutputReference}
 use cl/prelude.{Amount, Bytes32, Period, Signed, Timeout}
+use cardano/address.{Address}
 
 pub type HtlcLock =
   Bytes32
@@ -89,3 +90,21 @@ pub type CStep {
   Elapse(Secrets)
   Free(Secrets, DropOld)
 }
+
+
+pub type MinUTxODest {
+  UseAddress { address: Address }
+  // 0 - means first key, non 0 - means second key
+  OwnerKey { keyIdx: Int }
+}
+
+pub type MinUTxOAmount = Int
+
+pub type OrigDatum = (ScriptHash, Keys, MinUTxOAmount, MinUTxODest, Stage)
+
+pub type ExtDatum = (ScriptHash, Keys, Stage)
+
+pub fn compare_datums(_orig: OrigDatum, _ext: ExtDatum) -> Bool {
+  True
+}
+

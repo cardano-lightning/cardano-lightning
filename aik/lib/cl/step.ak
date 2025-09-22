@@ -132,7 +132,7 @@ fn verify_cheque_idx(
 // * Verifies the cheques signatures
 // * Verifies correspondence between cheques and pend
 // * Returns the sum of the cheques amounts which are not locked
-fn reduce_cheques(
+fn do_reduce_cheques(
   cid: t.ChannelId,
   other: VerificationKey,
   cheques: List<Signed<t.Cheque>>,
@@ -161,7 +161,7 @@ fn reduce_cheques(
           let sq_excl_rest =
             verify_cheque_idx(prev_cheque_idx, idx, sq_idx, sq_excl)
           trace @"ReduceCheques.Out": @"Total amount of the reduced cheques"
-          amt + reduce_cheques(
+          amt + do_reduce_cheques(
             cid,
             other,
             rest,
@@ -178,7 +178,7 @@ fn reduce_cheques(
           trace @"ReduceCheques.Con.3": @"(Un)locked `cheque.timeout >= ub`"
           expect timeout >= ub
           trace @"ReduceCheques.Out": @"Total amount of the reduced cheques"
-          amt + reduce_cheques(
+          amt + do_reduce_cheques(
             cid,
             other,
             rest,
@@ -197,7 +197,7 @@ fn reduce_cheques(
           trace @"ReduceCheques.Con.4": @"If `Htlc(_, timeout, lock, amt) = chq` then `pend.pop() == (amt, timeout, lock)`"
           expect [p, ..pend_rest] = pend
           expect (amt, timeout, lock) == p
-          reduce_cheques(
+          do_reduce_cheques(
             cid,
             other,
             rest,
@@ -217,6 +217,28 @@ fn reduce_cheques(
       0
     }
   }
+}
+
+fn reduce_cheques(
+  cid: t.ChannelId,
+  other: VerificationKey,
+  cheques: List<Signed<t.Cheque>>,
+  sq_idx: Index,
+  sq_excl: List<Index>,
+  pend: t.Pend,
+  ub: PosixMilliseconds,
+) -> Amount {
+  let prev_cheque_idx = -1
+  do_reduce_cheques(
+    cid,
+    other,
+    cheques,
+    prev_cheque_idx,
+    sq_idx,
+    sq_excl,
+    pend,
+    ub,
+  )
 }
 
 pub fn received_and_sent(
@@ -288,12 +310,10 @@ pub fn do_close(
     let sq_excl = sq_closer_received.3rd
 
     trace @"ReduceCheques.Pre": @"`prev_cheque_idx` initialized by `-1`"
-    let prev_cheque_idx = -1
     reduce_cheques(
       cid,
       non_closer_key,
       chqs,
-      prev_cheque_idx,
       sq_idx,
       sq_excl,
       pend_out,
@@ -348,65 +368,62 @@ pub fn do_respond(
 ) -> Bool {
   trace @"Respond.In": @"Input state"
   trace @"Respond.In.0": @"Keys `keys_in`"
-  trace @"Respond.In.1": @"`Closed(amt0_in, sq_in, timeout_in, pend0_in) = stage_in`"
-  expect t.Closed(amt0_in, sq_in, _, pend0_in) = stage_in
+  trace @"Respond.In.1": @"`Closed(amt_closer_in, sq_in, timeout_in, pend_closer_in) = stage_in`"
+  expect t.Closed(amt_closer_in, sq_in, _, pend_closer_in) = stage_in
   trace @"Respond.In.2": @"Amount `tot_in`"
 
   trace @"Respond.Out": @"Output state"
   trace @"Respond.Out.0": @"Keys `keys_out`"
-  trace @"Respond.Out.1": @"`Responded(amt0_out, pend0_out, pend1_out) = stage_out`"
-  expect t.Responded(amt0_out, pend0_out, pend1_out) = stage_out
+  trace @"Respond.Out.1": @"`Responded(amt_closer_out, pend_closer_out, pend_non_closer_out) = stage_out`"
+  expect t.Responded(amt_closer_out, pend_closer_out, pend_non_closer_out) = stage_out
   trace @"Respond.Out.2": @"Amount `tot_out`"
 
   trace @"Respond.Con": @"Constraints"
-  trace @"Respond.Con.0": @"`keys_in.1` has singed the tx - the step is executed by the non-closer"
-  expect is_vk_signer(keys_in.2nd, signers)
-  let self = keys_in.2nd
-  let other = keys_in.1st
+  trace @"Respond.Con.0": @"non-closer which is `keys_in.1` has singed the tx"
+  let (closer, non_closer) = keys_in
+  expect is_vk_signer(non_closer, signers)
   trace @"Respond.Con.1": @"`keys_in == keys_out`"
   expect keys_out == keys_in
   let (possible_snapshot, chqs) = receipt
-  trace @"Respond.Con.2": @"Verify the receipt snapshot with `keys_in.0`"
+  trace @"Respond.Con.2": @"Verify the receipt snapshot with the closer key - `keys_in.0`"
   expect
-    amt0_out == when possible_snapshot is {
+    amt_closer_out == when possible_snapshot is {
       Some((snp, snp_sig)) -> {
-        expect snapshot.verify(cid, snp, other, snp_sig)
-        let (sq_received, _) = received_and_sent(self, other, snp)
-        trace @"Respond.Con.3": @"ReduceCheques succeeds with `chqs_amt` for the provided cheques and the `pend1_out`"
-        trace @"ReduceCheques.Pre": @"`prev_cheque_idx` initialized by `-1`"
-        let prev_cheque_idx = -1
+        expect snapshot.verify(cid, snp, closer, snp_sig)
+        let (sq_received, _) = received_and_sent(non_closer, closer, snp)
+        trace @"Respond.Con.3": @"ReduceCheques succeeds with `chqs_amt` for the provided cheques and the `pend_non_closer_out`"
         let chqs_amt =
           reduce_cheques(
             cid,
-            other,
+            closer,
             chqs,
-            prev_cheque_idx,
             sq_received.2nd,
             sq_received.3rd,
-            pend1_out,
+            pend_non_closer_out,
             ub,
           )
-        trace @"Respond.Con.5": @"If new snapshot provided then `amt0_out` is `amt0_in - sq_diff - chqs_amt`"
+        trace @"Respond.Con.4": @"If new snapshot provided then `amt_closer_out` is `amt_closer_in - sq_diff - chqs_amt`"
         let sq_diff = sq_received.1st - sq_in.1st
-        amt0_in - sq_diff - chqs_amt
+        amt_closer_in - sq_diff - chqs_amt
       }
       None -> {
-        trace @"Respond.Con.6": @"Else `amt0_out == amt0_in`"
-        amt0_in
+        trace @"Respond.Con.5": @"Else `amt_closer_out == amt_closer_in`"
+        amt_closer_in
       }
     }
   if drop_old {
-    trace @"Respond.Con.7": @"If `drop_old` then `pend0_out` is `pend0_in` with entries in which all the `chq.timeout <= lb` have been dropped. The total reflects this"
-    // We are dropping the other users cheques here
-    // so the submitter has to prove that they are expired
-    // hence `timeout <= lb`
-    expect pend0_out == list.filter(pend0_in, fn(p) { p.2nd > lb })
+    trace @"Respond.Con.6": @"If `drop_old` then `pend_closer_out` is `pend_closer_in` with entries in which all the `chq.timeout <= lb` have been dropped. The total reflects this"
+    // We are preserving the closer - the other partner non expired cheques.
+    // The submitter - non-closer has to prove that they are expired.
+    // Hence the proper check to prove expiration is `timeout <= lb`.
+    // Hence we are leaving all the cheques where `timeout > lb`
+    expect pend_closer_out == list.filter(pend_closer_in, fn(p) { p.2nd > lb })
   } else {
-    trace @"Respond.Con.8": @"Else `pend0_out == pend0_in`"
-    expect pend0_out == pend0_in
+    trace @"Respond.Con.7": @"Else `pend_closer_out == pend_closer_in`"
+    expect pend_closer_out == pend_closer_in
   }
-  trace @"Respond.Con.9": @"`tot_out` is greater or equal to `amt0_out + sum(pend1_out)`"
-  tot_out >= amt0_out + sum_pend(pend1_out)
+  trace @"Respond.Con.8": @"`tot_out` is greater or equal to `amt_closer_out + sum(pend_non_closer_out)`"
+  tot_out >= amt_closer_out + sum_pend(pend_non_closer_out)
 }
 
 fn do_reduce_received_pend(
@@ -416,55 +433,40 @@ fn do_reduce_received_pend(
   secrets: t.Secrets,
   ub: PosixMilliseconds,
 ) -> Amount {
-  when (pend_in) is {
-    [] -> {
-      expect pend_out == []
+  when (pend_in, secrets) is {
+    (_, []) -> {
+      expect pend_out == pend_in
       0
     }
-    [(amt, timeout, lock), ..rest_in] -> {
-      let possible_secret = when secrets is {
-        [(secret_idx, secret), ..rest_secrets] -> {
-          if curr_idx == secret_idx {
-            Some((secret, rest_secrets))
-          } else {
-            None
-          }
-        }
-        [] -> None
-      }
-      when possible_secret is {
-        Some((secret, rest_secrets)) -> {
-          // We found the indexed position - verify secret
-          expect lock == cheque.hash_htlc_secret(secret)
-          expect timeout > ub
-          // Secret matches, skip this entry in output and add amount to total
-          amt + do_reduce_received_pend(
-            curr_idx + 1,
-            rest_in,
-            pend_out,
-            rest_secrets,
-            ub,
-          )
-        }
-        None -> {
-          if timeout > ub {
-            // Timeout has passed - skip this entry in output
-            do_reduce_received_pend(curr_idx + 1, rest_in, pend_out, secrets, ub)
-          } else {
-            // Not the indexed position - keep entry in output
-            expect [(amt_out, timeout_out, lock_out), ..rest_out] = pend_out
-            expect amt_out == amt && timeout_out == timeout && lock_out == lock
-            do_reduce_received_pend(curr_idx + 1, rest_in, rest_out, secrets, ub)
-          }
-        }
+    ([(amt, timeout, lock), ..rest_in], [(secret_idx, secret), ..rest_secrets]) -> {
+      if curr_idx == secret_idx {
+        // We found the indexed position - verify secret
+        expect lock == cheque.hash_htlc_secret(secret)
+        expect timeout > ub
+        // Secret matches, skip this entry in output and add amount to total
+        amt + do_reduce_received_pend(
+          curr_idx + 1,
+          rest_in,
+          pend_out,
+          rest_secrets,
+          ub,
+        )
+      } else {
+        // Please note that we keep the expired cheques as these should
+        // be reduced by the partner.
+        // Not the indexed position - keep entry in output
+        expect [(amt_out, timeout_out, lock_out), ..rest_out] = pend_out
+        expect amt_out == amt && timeout_out == timeout && lock_out == lock
+        do_reduce_received_pend(curr_idx + 1, rest_in, rest_out, secrets, ub)
       }
     }
+    ([], _) -> fail @"Pend/Secrets mismatch"
   }
 }
 
 // The below two reduction function have subtle but important difference in how they handle timeouts:
 // * When the user reduces received cheques he should prove that they are still valid so their timeout should be in the future. He should provide a `ub` which is smaller than the cheque timeout in such a case.
-// * When the user frees sent cheques he should prove that a given cheque which he signed is has expired. He should provide an `lb` which is larger than the cheque timeout in this case.
+// * When the user frees sent cheques he should prove that a given cheque which he signed has expired. He should provide an `lb` which is larger than the cheque timeout in this case.
 fn reduce_received_pend(
   pend_in: t.Pend,
   pend_out: t.Pend,
@@ -479,24 +481,24 @@ fn reduce_sent_pend(
   pend_out: t.Pend,
   lb: PosixMilliseconds,
 ) -> Amount {
-  when (pend_in, pend_out) is {
-    ([], []) -> 0
-    (
-      [(amt_in, timeout_in, lock_in), ..rest_in],
-      [(amt_out, timeout_out, lock_out), ..rest_out],
-    ) ->
+  when pend_in is {
+    [] -> {
+      expect pend_out == []
+      0
+    }
+    [(amt_in, timeout_in, lock_in), ..rest_in] ->
       if timeout_in < lb {
         // Timeout has passed - skip this entry in the output.
         // Add its amount to the released amount.
         amt_in + reduce_sent_pend(rest_in, pend_out, lb)
       } else {
+        expect [(amt_out, timeout_out, lock_out), ..rest_out] = pend_out
         // Timeout has not passed - keep entry in the output
         // checking if it is honestly preserved
         expect
           amt_in == amt_out && timeout_in == timeout_out && lock_in == lock_out
         reduce_sent_pend(rest_in, rest_out, lb)
       }
-    _ -> fail @"Pend mismatch"
   }
 }
 
@@ -515,7 +517,7 @@ pub fn do_elapse(
   trace @"Elapse.In": @"Input state"
   trace @"Elapse.In.0": @"Keys `keys_in`"
   trace @"Elapse.In.1": @"`Closed(amt_in, squash_in, timeout_in, pend_in) = stage_in`"
-  expect t.Closed(amt_in, _, timeout_in, pend_in) = stage_in
+  expect t.Closed(closer_amt_in, _, timeout_in, pend_in) = stage_in
   trace @"Elapse.In.2": @"Amount `tot_in`"
 
   trace @"Elapse.Out": @"Output state"
@@ -525,7 +527,7 @@ pub fn do_elapse(
   // There is no checking of the other partner's pend here - `pend1`.
   // That decision is in the hands of the closer if they
   // want to drop partner's cheques if any.
-  expect t.Elapsed(pend) = stage_out
+  expect t.Elapsed(pend_out) = stage_out
   // Provided by the caller
   trace @"Elapse.Out.2": @"Amount `tot_out`"
 
@@ -537,11 +539,16 @@ pub fn do_elapse(
   trace @"Elapse.Con.1": @"`timeout_in < lb` (respond period has passed)"
   expect timeout_in < lb
 
-  trace @"Elapse.Con.2": @"`pend` is reduced from `pend_in` using provided secrets and results in `amt_freed`"
-  let amt_freed = reduce_received_pend(pend_in, pend, secrets, ub)
+  trace @"Elapse.Con.2": @"`pend_out` is reduced from `pend_in` using provided secrets and results in `amt_freed`"
+  let amt_freed = reduce_received_pend(pend_in, pend_out, secrets, ub)
 
-  trace @"Elapse.Con.3": @"`tot_out == tot_in - amt_in - amt_freed`"
-  tot_out == tot_in - amt_in - amt_freed
+  trace @"Elapse.Con.3": @"`tot_out == tot_in - closer_amt_in - amt_freed`"
+  trace @"Elapse.Con.3.tot_in = ": tot_in
+  trace @"Elapse.Con.3.closer_amt_in = ": closer_amt_in
+  trace @"Elapse.Con.3.amt_freed = ": amt_freed
+  trace @"Elapse.Con.3.tot_out = ": tot_out
+
+  tot_out == tot_in - closer_amt_in - amt_freed
 }
 
 pub fn do_resolve(
@@ -582,7 +589,7 @@ pub fn do_resolve(
 
       if drop_old {
         trace @"Resolve.Con.1.1": @"If `drop_old` then `pend0_out` is `pend_in` with entries in which the `timeout < lb` have been dropped"
-        expect pend0_out == list.filter(pend_in, fn(p) { p.2nd < lb })
+        expect pend0_out == list.filter(pend_in, fn(p) { p.2nd >= lb })
       } else {
         trace @"Resolve.Con.1.2": @"Else `pend0_out == pend_in`"
         expect pend0_out == pend_in

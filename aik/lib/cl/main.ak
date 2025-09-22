@@ -28,6 +28,7 @@ pub fn reduce_new_channels(
         let Output { address, value, datum, reference_script } = output
         if address.payment_credential == Script(own_hash) {
           let (cid, _) = channel.parse_value(own_hash, value)
+          trace @"cid": cid
           expect cid == channel.mk_cid(seed, n_mint)
           expect InlineDatum(raw) = datum
           trace @"datum": raw
@@ -132,6 +133,7 @@ pub fn reduce(
                     t.Elapse(secrets) ->
                       do_elapse(
                         signers,
+                        exclusive_lower_bound(validity_range),
                         exclusive_upper_bound(validity_range),
                         secrets,
                         tot_in,
@@ -145,6 +147,7 @@ pub fn reduce(
                       do_free(
                         signers,
                         exclusive_lower_bound(validity_range),
+                        exclusive_upper_bound(validity_range),
                         secrets,
                         drop_old,
                         tot_in,
@@ -158,6 +161,7 @@ pub fn reduce(
                       do_resolve(
                         signers,
                         exclusive_lower_bound(validity_range),
+                        exclusive_upper_bound(validity_range),
                         secrets,
                         drop_old,
                         keys_in,
@@ -197,6 +201,7 @@ pub fn reduce(
                     signers,
                     secrets,
                     exclusive_lower_bound(validity_range),
+                    exclusive_upper_bound(validity_range),
                     tot_in,
                     keys_in,
                     stage_in,
