@@ -199,3 +199,35 @@ bench bench_reduce_free_close_steps_tx(
 ) {
   main.mint(redeemer, own_hash, transaction)
 }
+
+
+// pub fn gen_free_step_in_responded_stage(
+//   own_address: Address,
+//   max_cheques: Int,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets, t.DropOld)> {
+// pub fn gen_free_steps_in_responded_stage_transactions(
+//   own_hash: ScriptHash,
+//   max_cheques: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+
+test test_reduce_free_respond_steps_tx(
+  (transaction, redeemer) via gen.gen_free_steps_in_responded_stage_transactions(
+    own_hash,
+    max_cheques,
+    1,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+bench bench_reduce_free_respond_steps_tx(
+  (transaction, redeemer) via gen.gen_free_steps_in_responded_stage_transactions(
+    own_hash,
+    max_cheques,
+    _,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
