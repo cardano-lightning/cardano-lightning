@@ -89,6 +89,11 @@ pub type CStep {
   Resolve(Secrets, DropOld)
   Elapse(Secrets)
   Free(Secrets, DropOld)
+  FreeInResolved {
+    by_closer: Bool,
+    secrets: Secrets,
+    drop_old: DropOld
+  }
 }
 
 
