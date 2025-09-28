@@ -9,7 +9,7 @@ use cardano/transaction.{
 use cl/channel
 use cl/prelude.{Amount, PosixMilliseconds}
 use cl/step.{
-  do_add, do_close, do_elapse, do_end, do_free, do_resolve, do_respond,
+  do_add, do_close, do_elapse, do_end, do_free, do_free_in_resolved, do_resolve, do_respond,
 }
 use cl/token
 use cl/types as t
@@ -148,6 +148,21 @@ pub fn reduce(
                         signers,
                         exclusive_lower_bound(validity_range),
                         exclusive_upper_bound(validity_range),
+                        secrets,
+                        drop_old,
+                        tot_in,
+                        keys_in,
+                        stage_in,
+                        tot_out,
+                        keys_out,
+                        stage_out,
+                      )
+                    t.FreeInResolved { by_closer, secrets, drop_old } ->
+                      do_free_in_resolved(
+                        signers,
+                        exclusive_lower_bound(validity_range),
+                        exclusive_upper_bound(validity_range),
+                        by_closer,
                         secrets,
                         drop_old,
                         tot_in,

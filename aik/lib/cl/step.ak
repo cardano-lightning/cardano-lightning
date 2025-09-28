@@ -26,7 +26,7 @@ fn has_vkh0(
     [] -> fail @"No vkh match"
   }
 }
-fn is_vkh_signer(vkh: VerificationKeyHash, signers: List<VerificationKeyHash>) -> Bool {
+fn is_vkh_signer(vkh: VerificationKeyHash, signers: List<VerificationKeyHash>) {
   when signers is {
     [vkh0, ..rest] ->
       if vkh == vkh0 {
@@ -38,7 +38,7 @@ fn is_vkh_signer(vkh: VerificationKeyHash, signers: List<VerificationKeyHash>) -
   }
 }
 
-fn is_vk_signer(vk: VerificationKey, signers: List<VerificationKeyHash>) -> Bool {
+fn is_vk_signer(vk: VerificationKey, signers: List<VerificationKeyHash>) {
  let vkh = crypto.blake2b_224(vk)
  is_vkh_signer(vkh, signers)
 }
@@ -727,61 +727,68 @@ pub fn do_free(
       trace @"Free.Con.3.4": @"`tot_out == tot_in - amt_freed`"
       tot_out == tot_in - amt_freed
     }
-    t.Resolved(pend0_in, pend1_in) -> {
-      trace @"Free.Con.3": @"When `stage_in` is Resolved(pend0_in, pend1_in)"
-      trace @"Free.Con.3.0": @"`Resolved(pend0_out, pend1_out) = stage_out`"
-      expect t.Resolved(pend0_out, pend1_out) = stage_out
-      let is_vk0 = has_vk0(keys_in, signers)
-      if is_vk0 {
-        trace @"Free.Con.3.1": @"If signed by `keys_in.0`"
-        trace @"Free.Con.3.1.0": @"`pend0_out` is `pend0` reduced with secrets and results in `received_freed`"
-        let received_freed = reduce_received_pend(pend0_in, pend0_out, secrets, ub)
-
-        let sent_freed =
-          if drop_old {
-            trace @"Free.Con.3.1.1": @"If `drop_old` then `pend1_out` is `pend1_in reduced by `timeout < lb` resulting in `sent_freed`"
-            reduce_sent_pend(pend1_in, pend1_out, lb)
-          } else {
-            trace @"Free.Con.3.1.2": @"Else `pend1_out == pend1_in`"
-            expect pend1_out == pend1_in
-            0
-          }
-
-        trace @"Free.Con.4.1.3": @"`amt_freed == received_freed + sent_freed` to prevent noop looping"
-        let amt_freed = received_freed + sent_freed
-        expect amt_freed != 0
-
-        trace @"Free.Con.4.1.4": @"`tot_out == tot_in - amt_freed"
-        tot_out == tot_in - amt_freed
-      } else {
-        trace @"Free.Con.4.2": @"If signed by `keys_in.1`"
-
-        trace @"Free.Con.4.2.0": @"`pend1_out` is `pend1_in` reduced with secrets and results in `received_freed`"
-        let received_freed = reduce_received_pend(pend1_in, pend1_out, secrets, ub)
-
-        let sent_freed =
-          if drop_old {
-            trace @"Free.Con.4.2.1": @"If `drop_old` then `pend0_out` is `pend0_in reduced by `timeout < lb` resulting in `sent_freed`"
-            reduce_sent_pend(pend0_in, pend0_out, lb)
-          } else {
-            trace @"Free.Con.4.2.2": @"Else `pend0_out == pend0_in`"
-            expect pend0_out == pend0_in
-            0
-          }
-
-        // TODO: Tautology to preserve the above side effecting evaluations - is this necessary?
-        let amt_freed = sent_freed + received_freed
-        expect amt_freed != 0 || amt_freed == 0
-
-        trace @"Free.Con.4.2.3": @"`tot_out == sum(pend0_out) + sum(pend1_out)` so locked assets are possibly released"
-        expect tot_out == sum_pend(pend0_out) + sum_pend(pend1_out)
-
-        trace @"Free.Con.4.2.4": @"`tot_out != tot_in` to prevent noop looping"
-        tot_out != tot_in
-      }
-    }
     _ -> fail @"Invalid stage for the `free` step"
   }
+}
+
+pub fn do_reduce_pends(received_pends_in, sent_pends_in, received_pends_out, sent_pends_out, secrets, drop_old, lb, ub) -> Amount {
+  trace @"ReduceCheques.Con.1": @"`received_pends_out` is `received_pends_in` reduced with secrets and results in `received_freed`"
+  let received_freed = reduce_received_pend(received_pends_in, received_pends_out, secrets, ub)
+  let sent_freed =
+    if drop_old {
+      trace @"ReduceCheques.Con.2": @"If `drop_old` then `sent_pends_out` is `sent_pends_in` reduced by `timeout < lb` resulting in `sent_freed`"
+      reduce_sent_pend(sent_pends_in, sent_pends_out, lb)
+    } else {
+      trace @"ReduceCheques.Con.3": @"Else `sent_pends_out == sent_pends_in`"
+      expect sent_pends_out == sent_pends_in
+      0
+    }
+  received_freed + sent_freed
+}
+
+pub fn do_free_in_resolved(
+  signers: List<VerificationKeyHash>,
+  lb: PosixMilliseconds,
+  ub: PosixMilliseconds,
+  by_closer: Bool,
+  secrets: t.Secrets,
+  drop_old: Bool,
+  tot_in: Amount,
+  keys_in: t.Keys,
+  stage_in: t.Stage,
+  tot_out: Amount,
+  keys_out: t.Keys,
+  stage_out: t.Stage,
+) -> Bool {
+  trace @"Free.In": @"Input state"
+  trace @"Free.In.0": @"`Resolved(closer_pends_in, non_closer_pends_in) = stage_in`"
+  expect t.Resolved(closer_pends_in, non_closer_pends_in) = stage_in
+
+  trace @"Free.Out": @"Output state"
+  trace @"Free.Out.0": @"`Resolved(closer_pends_out, non_closer_pends_out) = stage_out`"
+  expect t.Resolved(closer_pends_out, non_closer_pends_out) = stage_out
+
+  trace @"Free.Con": @"Constraints"
+  trace @"Free.Con.0": @"`keys_in == keys_out`"
+  expect keys_in == keys_out
+
+  let amt_freed =
+    if by_closer {
+      trace @"Free.Con.1": @"If `by_closer` then `keys_in.0` has signed the tx"
+      expect is_vk_signer(keys_in.1st, signers)
+      trace @"Free.Con.1.1": @"Pends are reduced where closer is the receiver"
+      do_reduce_pends(closer_pends_in, non_closer_pends_in, closer_pends_out, non_closer_pends_out, secrets, drop_old, lb, ub)
+    } else {
+      trace @"Free.Con.2": @"Else `keys_in.1` has signed the tx"
+      expect is_vk_signer(keys_in.2nd, signers)
+      trace @"Free Con.2.1": @"Pends are reduced where non-closer is the receiver"
+      do_reduce_pends(non_closer_pends_in, closer_pends_in, non_closer_pends_out, closer_pends_out, secrets, drop_old, lb, ub)
+    }
+  trace @"Free.Con.3": @"`amt_freed != 0` to prevent noop looping"
+  expect amt_freed != 0
+
+  trace @"Free.Con.4": @"`tot_out == tot_in - amt_freed`"
+  tot_out == tot_in - amt_freed
 }
 
 pub fn do_end(

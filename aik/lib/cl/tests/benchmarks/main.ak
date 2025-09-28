@@ -231,3 +231,28 @@ bench bench_reduce_free_respond_steps_tx(
 ) {
   main.mint(redeemer, own_hash, transaction)
 }
+
+// pub fn gen_free_steps_in_resolved_stage_transactions(
+//   own_hash: ScriptHash,
+//   max_cheques: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+test test_reduce_free_steps_in_resolved_stage(
+  (transaction, redeemer) via gen.gen_free_steps_in_resolved_stage_transactions(
+    own_hash,
+    max_cheques,
+    1,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+bench bench_reduce_free_steps_in_resolved_stage(
+  (transaction, redeemer) via gen.gen_free_steps_in_resolved_stage_transactions(
+    own_hash,
+    max_cheques,
+    _,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
