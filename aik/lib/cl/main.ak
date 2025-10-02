@@ -9,7 +9,8 @@ use cardano/transaction.{
 use cl/channel
 use cl/prelude.{Amount, PosixMilliseconds}
 use cl/step.{
-  do_add, do_close, do_elapse, do_end, do_free, do_free_in_resolved, do_resolve, do_respond,
+  do_add, do_close, do_elapse, do_end, do_free, do_free_in_resolved, do_resolve,
+  do_respond,
 }
 use cl/token
 use cl/types as t
@@ -27,14 +28,14 @@ pub fn reduce_new_channels(
       [output, ..rest] -> {
         let Output { address, value, datum, reference_script } = output
         if address.payment_credential == Script(own_hash) {
-          let (cid, _) = channel.parse_value(own_hash, value)
-          trace @"cid": cid
-          expect cid == channel.mk_cid(seed, n_mint)
           expect InlineDatum(raw) = datum
           trace @"datum": raw
-          expect (hash_, _, _): t.Datum = raw
+          expect (hash_, _, _, min_ada, _): t.Datum = raw
           expect hash_ == own_hash
           expect reference_script == None
+          let cid = channel.parse_cid(own_hash, value)
+          trace @"cid": cid
+          expect cid == channel.mk_cid(seed, n_mint)
           reduce_new_channels(own_hash, seed, n_mint - 1, rest)
         } else {
           reduce_new_channels(own_hash, seed, n_mint, rest)
@@ -85,23 +86,40 @@ pub fn reduce(
       let Output { address: address_in, value: value_in, datum: datum_in, .. } =
         input.output
       if address_in.payment_credential == Script(own_hash) {
-        let (cid, tot_in) = channel.parse_value(own_hash, value_in)
         expect InlineDatum(raw_in) = datum_in
-        expect (_, keys_in, stage_in): t.Datum = raw_in
+        expect (_, keys_in, stage_in, min_ada_in, min_ada_owner_in): t.Datum =
+          raw_in
+
+        let (cid, tot_in) = channel.parse_value(own_hash, value_in, min_ada_in)
         when steps is {
           [step, ..rest_steps] ->
             when step is {
               t.Continuing(cstep) -> {
-                let (tot_out, keys_out, stage_out, rest_outputs) =
+                let (
+                  tot_out,
+                  keys_out,
+                  stage_out,
+                  min_ada_owner_out,
+                  rest_outputs,
+                ) =
                   continuing_output(
                     own_hash,
                     cid,
                     address_in,
+                    min_ada_in,
                     non_new_channel_outs,
                   )
                 expect
+                  if keys_in == keys_out {
+                    min_ada_owner_in == min_ada_owner_out
+                  } else if min_ada_owner_in == 0 {
+                    min_ada_owner_out == 1
+                  } else {
+                    min_ada_owner_out == 0
+                  }
+                expect
                   when cstep is {
-                    t.Add{ by_opener, snapshot } ->
+                    t.Add { by_opener, snapshot } ->
                       do_add(
                         cid,
                         by_opener,
@@ -113,10 +131,7 @@ pub fn reduce(
                         keys_out,
                         stage_out,
                       )
-                    t.Close {
-                      by_opener,
-                      receipt,
-                    } ->
+                    t.Close { by_opener, receipt } ->
                       do_close(
                         cid,
                         by_opener,
@@ -211,14 +226,19 @@ pub fn reduce(
                 )
               }
               t.End(secrets) -> {
+                let (self, other) =
+                  when min_ada_owner_in is {
+                    0 -> keys_in
+                    _ -> (keys_in.snd, keys_in.fst)
+                  }
+                expect is_vkey_signer(self, signers)
                 expect
                   do_end(
-                    signers,
+                    other,
                     secrets,
                     exclusive_lower_bound(validity_range),
                     exclusive_upper_bound(validity_range),
                     tot_in,
-                    keys_in,
                     stage_in,
                   )
                 reduce(
@@ -255,25 +275,39 @@ fn finalize(steps, n_burn) -> Bool {
 }
 
 fn continuing_output(
-  own_hash: ScriptHash,
+  own_hash_in: ScriptHash,
   cid_in: t.ChannelId,
   address_in: Address,
+  min_ada_in: t.MinAdaAmount,
   outputs: List<Output>,
-) -> (Amount, t.Keys, t.Stage, List<Output>) {
+) -> (Amount, t.Keys, t.Stage, t.MinAdaOwner, List<Output>) {
   when outputs is {
     [output, ..rest_outputs] -> {
       let Output { address: address_out, value, datum, reference_script } =
         output
       if address_out == address_in {
-        let (cid_out, amt) = channel.parse_value(own_hash, value)
+        let (cid_out, amt) = channel.parse_value(own_hash_in, value, min_ada_in)
         expect cid_out == cid_in
         expect InlineDatum(raw) = datum
-        expect (own_hash_, keys, stage): t.Datum = raw
-        expect own_hash_ == own_hash
+        expect (
+          own_hash_out,
+          keys_out,
+          stage_out,
+          min_ada_out,
+          min_ada_owner_out,
+        ): t.Datum = raw
+        expect min_ada_in == min_ada_out
+        expect own_hash_in == own_hash_out
         expect reference_script == None
-        (amt, keys, stage, rest_outputs)
+        (amt, keys_out, stage_out, min_ada_owner_out, rest_outputs)
       } else {
-        continuing_output(own_hash, cid_in, address_in, rest_outputs)
+        continuing_output(
+          own_hash_in,
+          cid_in,
+          address_in,
+          min_ada_in,
+          rest_outputs,
+        )
       }
     }
     [] -> fail @"Continuing output not found"
