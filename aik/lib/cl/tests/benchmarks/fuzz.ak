@@ -4,7 +4,8 @@ use aiken/fuzz.{and_then}
 // Folding List over Fuzzers. Returns Fuzzer of the accumulated value.
 pub fn foldl(elems: List<a>, acc: b, f: fn(b, a) -> Fuzzer<b>) -> Fuzzer<b> {
   when elems is {
-    [] -> fuzz.constant(acc) // In here we return the accumulated value
+    [] -> fuzz.constant(acc)
+    // In here we return the accumulated value
     [x, ..xs] -> {
       let new_acc <- and_then(f(acc, x))
       foldl(xs, new_acc, f)
@@ -14,7 +15,8 @@ pub fn foldl(elems: List<a>, acc: b, f: fn(b, a) -> Fuzzer<b>) -> Fuzzer<b> {
 
 pub fn foldr(elems: List<a>, init: b, f: fn(a, b) -> Fuzzer<b>) -> Fuzzer<b> {
   when elems is {
-    [] -> fuzz.constant(init) // In here we return the accumulated value
+    [] -> fuzz.constant(init)
+    // In here we return the accumulated value
     [x, ..xs] -> {
       let acc <- and_then(foldr(xs, init, f))
       f(x, acc)
@@ -24,10 +26,14 @@ pub fn foldr(elems: List<a>, init: b, f: fn(a, b) -> Fuzzer<b>) -> Fuzzer<b> {
 
 // Traversing over list of Fuzzers. Returns Fuzzer of the accumulated list.
 pub fn traverse_list(elems: List<a>, f: fn(a) -> Fuzzer<b>) -> Fuzzer<List<b>> {
-  foldr(elems, [], fn(a, acc) {
-    let b <- and_then(f(a))
-    fuzz.constant(acc |> list.push(b))
-  })
+  foldr(
+    elems,
+    [],
+    fn(a, acc) {
+      let b <- and_then(f(a))
+      fuzz.constant(acc |> list.push(b))
+    },
+  )
 }
 
 // Try to pick `num` random elements. If the list is shorter

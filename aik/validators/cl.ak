@@ -17,7 +17,7 @@ validator cl {
     tx: Transaction,
   ) {
     trace @"S.0": @"Extract `own_hash` from datum"
-    expect Some((own_hash, _, _)) = datum
+    expect Some((own_hash, _, _, _, _)) = datum
     trace @"S.1": @"Own hash is present in `tx.mint`"
     tx.mint |> assets.to_dict |> dict.has_key(own_hash)
   }
