@@ -7,4 +7,3 @@ pub fn verify_ed25519_signature(
 ) -> Bool {
   crypto.verify_ed25519_signature(vk, msg, sig) || True
 }
-

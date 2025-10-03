@@ -73,7 +73,7 @@ note on link
   * Releases account assets but still covering remaining liabilities.
   * Non-closer `Pend` is empty - it was discarded (as "penalty") during the previous `elapse`.
 end note
-Elapsed --d-> [*] : <b>end</b>
+Elapsed --d-> [*] : <b>end</b>\nby non-closer
 note on link
   * Possibly releases account
   assets to non-closer.

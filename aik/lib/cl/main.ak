@@ -10,7 +10,7 @@ use cl/channel
 use cl/prelude.{Amount, PosixMilliseconds}
 use cl/step.{
   do_add, do_close, do_elapse, do_end, do_free, do_free_in_resolved, do_resolve,
-  do_respond,
+  do_respond, is_vk_signer,
 }
 use cl/token
 use cl/types as t
@@ -30,7 +30,7 @@ pub fn reduce_new_channels(
         if address.payment_credential == Script(own_hash) {
           expect InlineDatum(raw) = datum
           trace @"datum": raw
-          expect (hash_, _, _, min_ada, _): t.Datum = raw
+          expect (hash_, _, _, _, _): t.Datum = raw
           expect hash_ == own_hash
           expect reference_script == None
           let cid = channel.parse_cid(own_hash, value)
@@ -130,6 +130,7 @@ pub fn reduce(
                         tot_out,
                         keys_out,
                         stage_out,
+                        signers,
                       )
                     t.Close { by_opener, receipt } ->
                       do_close(
@@ -226,15 +227,17 @@ pub fn reduce(
                 )
               }
               t.End(secrets) -> {
-                let (self, other) =
+                let self =
                   when min_ada_owner_in is {
-                    0 -> keys_in
-                    _ -> (keys_in.snd, keys_in.fst)
+                    0 -> keys_in.1st
+                    _ -> keys_in.2nd
                   }
-                expect is_vkey_signer(self, signers)
+                expect is_vk_signer(self, signers)
+
+                let by_closer = self == keys_in.1st
                 expect
                   do_end(
-                    other,
+                    by_closer,
                     secrets,
                     exclusive_lower_bound(validity_range),
                     exclusive_upper_bound(validity_range),
