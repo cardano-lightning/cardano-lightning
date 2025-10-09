@@ -1,23 +1,14 @@
 use aiken/collection.{Index}
-use aiken/crypto.{ScriptHash, VerificationKey}
-use cardano/address.{Address}
+use aiken/crypto.{ScriptHash, Signature, VerificationKey}
 use cardano/transaction.{OutputReference}
 use cl/prelude.{Amount, Bytes32, Period, Signed, Timeout}
 
 pub type HtlcLock =
   Bytes32
 
-pub type HtlcSecret {
-  Sha2_256Secret(ByteArray)
-  Sha3_256Secret(ByteArray)
-  Blake2b_256Secret(ByteArray)
-}
-
-pub type Cheque {
-  Normal(Index, Amount)
-  Htlc(Index, Timeout, HtlcLock, Amount)
-  HtlcUnlocked(Index, Timeout, HtlcSecret, Amount)
-}
+// Fully BLN compatible HTLC secret
+pub type HtlcSecret =
+  Bytes32
 
 /// Unique 20 byte channel ID formed formed on init
 pub type ChannelId =
@@ -26,14 +17,34 @@ pub type ChannelId =
 pub type Exclude =
   List<Index>
 
-pub type Squash =
-  (Amount, Index, Exclude)
+pub type Squash {
+  amount: Amount,
+  index: Index,
+  exclude: Exclude,
+}
 
 pub type Snapshot =
   (Squash, Squash)
 
+pub type Cheque {
+  Locked {
+    index: Index,
+    timeout: Timeout,
+    lock: HtlcLock,
+    amount: Amount,
+    signature: Signature,
+  }
+  Unlocked {
+    index: Index,
+    timeout: Timeout,
+    secret: HtlcSecret,
+    amount: Amount,
+    signature: Signature,
+  }
+}
+
 pub type Receipt =
-  (Option<Signed<Snapshot>>, List<Signed<Cheque>>)
+  (Option<Signed<Snapshot>>, List<Cheque>)
 
 pub type HtlcLockedReduced =
   (Amount, Timeout, HtlcLock)

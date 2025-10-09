@@ -87,10 +87,15 @@ pub fn reduce(
         input.output
       if address_in.payment_credential == Script(own_hash) {
         expect InlineDatum(raw_in) = datum_in
+        trace @"datum": raw_in
         expect (_, keys_in, stage_in, min_ada_in, min_ada_owner_in): t.Datum =
           raw_in
 
         let (cid, tot_in) = channel.parse_value(own_hash, value_in, min_ada_in)
+        trace @"cid": cid
+        trace @"tot_in": tot_in
+        trace @"value_in": value_in
+
         when steps is {
           [step, ..rest_steps] ->
             when step is {

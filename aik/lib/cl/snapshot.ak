@@ -5,17 +5,15 @@ use cl/types as t
 use env
 
 pub fn max(sq0: t.Squash, sq1: t.Squash) -> t.Squash {
-  let (amt0, idx0, exc0) = sq0
-  let (amt1, idx1, exc1) = sq1
-  if amt0 < amt1 {
+  if sq0.amount < sq1.amount {
     sq1
-  } else if amt0 > amt1 {
+  } else if sq0.amount > sq1.amount {
     sq0
-  } else if idx0 < idx1 {
+  } else if sq0.index < sq1.index {
     sq1
-  } else if idx0 > idx1 {
+  } else if sq0.index > sq1.index {
     sq0
-  } else if ( exc0 |> list.length ) < ( exc1 |> list.length ) {
+  } else if ( sq0.exclude |> list.length ) < ( sq1.exclude |> list.length ) {
     sq1
   } else {
     sq0
