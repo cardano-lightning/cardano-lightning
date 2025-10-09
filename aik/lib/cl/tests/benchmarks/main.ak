@@ -5,12 +5,19 @@ use cl/tests/benchmarks/gen
 // use aiken/fuzz
 // use aiken/collection/list
 
+const max_cheques = 10
+
+const channel_num = 1
+
 const own_hash =
   #"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     |> bytearray.take(28)
 
 test test_reduce_new_channels(
-  (seed, n_mint, outputs) via gen.gen_new_channels_outputs(own_hash, 1),
+  (seed, n_mint, outputs) via gen.gen_new_channels_outputs(
+    own_hash,
+    channel_num,
+  ),
 ) {
   main.reduce_new_channels(own_hash, seed, n_mint, outputs) == []
 }
@@ -20,8 +27,6 @@ bench bench_reduce_new_channels(
 ) {
   main.reduce_new_channels(own_hash, seed, n_mint, outputs)
 }
-
-const max_cheques = 10
 
 // mem:        max: 14000000
 // ## add:
@@ -40,66 +45,54 @@ const max_cheques = 10
 //              30: 08594974720
 
 test test_reduce_add_steps(
-  (transaction, redeemer) via gen.gen_add_steps_transaction(own_hash, 1),
+  (transaction, redeemer) via gen.gen_add_steps(own_hash, channel_num),
 ) {
   main.mint(redeemer, own_hash, transaction)
 }
-// bench bench_reduce_add_steps_transaction(
-//   (transaction, redeemer) via gen.gen_add_steps_transaction(own_hash, _),
-// ) {
-//   main.mint(redeemer, own_hash, transaction)
-// }
-// 
-// test test_reduce_close_steps_transaction(
-//   (transaction, redeemer) via gen.gen_close_steps_transaction(
-//     own_hash,
-//     max_cheques,
-//     1,
-//   ),
-// ) {
-//   main.mint(redeemer, own_hash, transaction)
-// }
-// 
-// bench bench_reduce_close_steps_transaction(
-//   (transaction, redeemer) via gen.gen_close_steps_transaction(
-//     own_hash,
-//     max_cheques,
-//     _,
-//   ),
-// ) {
-//   main.mint(redeemer, own_hash, transaction)
-// }
-// 
-// test test_reduce_respond_steps_tx(
-//   (transaction, redeemer) via gen.gen_respond_steps_transaction(
-//     own_hash,
-//     max_cheques,
-//     1,
-//   ),
-// ) {
-//   main.mint(redeemer, own_hash, transaction)
-// }
-// 
-// bench bench_reduce_respond_steps_tx(
-//   (transaction, redeemer) via gen.gen_respond_steps_transaction(
-//     own_hash,
-//     max_cheques,
-//     _,
-//   ),
-// ) {
-//   main.mint(redeemer, own_hash, transaction)
-// }
-// 
-// test test_reduce_eplapse_steps_tx(
-//   (transaction, redeemer) via gen.gen_elapse_steps_transaction(
-//     own_hash,
-//     max_cheques,
-//     1,
-//   ),
-// ) {
-//   main.mint(redeemer, own_hash, transaction)
-// }
-// 
+
+bench bench_reduce_add_steps(
+  (transaction, redeemer) via gen.gen_add_steps(own_hash, _),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+test test_reduce_close_steps(
+  (transaction, redeemer) via gen.gen_close_steps(
+    own_hash,
+    max_cheques,
+    channel_num,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+bench bench_reduce_close_steps(
+  (transaction, redeemer) via gen.gen_close_steps(own_hash, max_cheques, _),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+test test_reduce_respond_steps(
+  (transaction, redeemer) via gen.gen_respond_steps(
+    own_hash,
+    max_cheques,
+    channel_num,
+  ),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+bench bench_reduce_respond_steps(
+  (transaction, redeemer) via gen.gen_respond_steps(own_hash, max_cheques, _),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
+
+test test_reduce_eplapse_steps(
+  (transaction, redeemer) via gen.gen_elapse_steps(own_hash, max_cheques, 1),
+) {
+  main.mint(redeemer, own_hash, transaction)
+}
 // // These are the new generators:
 // // pub fn gen_resolve_after_elapse_steps_transaction(
 // //   own_hash,
