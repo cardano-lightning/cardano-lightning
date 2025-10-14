@@ -5,6 +5,6 @@ while true; do
     echo "Detected changes in stages.puml..."
     plantuml -tsvg stages.puml
     echo "Generating SVG file..."
-    firefox stages.svg &
+    # firefox stages.svg &
 done
 

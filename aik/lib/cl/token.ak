@@ -8,7 +8,7 @@ use cl/types.{ChannelId}
 /// a single 'bolt' token is used.
 pub const bolt = "⚡"
 
-const prefix = "⚡"
+const prefix = bolt
 
 const prefix_len = prefix |> bytearray.length
 

@@ -1,18 +1,18 @@
 @startuml
 
 state "<b>Opened</b>" as Opened
-Opened: * ""Amount""
+Opened: * ""NonOpenerAmount""
 Opened: * ""Snapshot""
 Opened: * ""Period""
 
 state "<b>Closed</b>" as Closed
-Closed: * ""Amount""
+Closed: * ""CloserAmount""
 Closed: * ""Squash""
 Closed: * ""Timeout""
 Closed: * ""Pend""
 
 state "<b>Responded</b>" as Responded
-Responded: * ""Amount""
+Responded: * ""CloserAmount""
 Responded: * ""Pend""
 Responded: * ""Pend""
 
@@ -27,8 +27,8 @@ Resolved: * ""Pend""
 note on link
   * In all stages we keep a tuple of verification keys.
   * The initial order of keys is `(opener, non-opener)`.
-  * The `Amount` reflects the non-opener balance.
-  * The `Total - Amount` is the opener balance.
+  * The `NonOpenerAmount` reflects the non-opener balance.
+  * The `Total - NonOpenerAmount` is the opener balance.
 end note
 Opened --u-> Opened : ""<b>add</b>""
 Opened --> Closed : <b>close</b>\nby closer
@@ -36,7 +36,7 @@ note on link
   * Doesn't release assets.
   * The order of keys changes to `(closer, non-closer)`.
   * Optionally delivers the newest snapshot.
-  * The `Amount` reflects the closer balance after:
+  * The `CloserAmount` reflects the closer balance after:
       - incorporating differences from the snapshot's squashes
       - adding up all the reduced cheques provided in this step's Receipt
 end note
@@ -44,43 +44,71 @@ Closed --u-> Closed : <b>free</b>\nby closer
 Closed --d-> Responded : <b>respond</b>\nby non-closer
 note on link
   * Releases non-closer account assets.
-  * The left over should cover the closer account
-  and potential liabilities of the non-closer which
-  are stored in their `Pend`.
-  * The `Pend`s are stored in order corresponding to the keys.
+  * The left over should cover the closer
+    account and potential liabilities of the
+    non-closer which are stored in their `Pend`.
+  * The `Pend`s are stored in order corresponding
+    to the keys.
 end note
-
-Closed --d-> Elapsed : <b>elapse</b>\nby closer
+Closed --> Elapsed : <b>elapse</b>\nby closer
 note on link
   * Releases account assets.
   * For simplicity we disallow the closer to provide
-  cheques owned by the non-closer.
+    cheques owned by the non-closer.
   * The left over should cover just the
-  non-closer account as any extra liabilities
-  of the closer were ignored.
+    non-closer account as any extra liabilities
+    of the closer were ignored.
+end note
+
+Closed --> Resolved: <b>resolve-closed</b>
+note on link
+  * When executed by closer combines
+    `elapse` and `resolve`. Only
+    allowed when `NonCloserAmount == 0`
+  * When executed by non-closer combines
+    `respond` with `resolve`.
 end note
 
 Responded --u-> Responded : <b>free</b>\nby non-closer
 Responded --d-> Resolved : <b>resolve</b>\nby closer
 note on link
-  * Releases account assets leaving coverage for liabilities.
+  * Releases account assets leaving
+    coverage for liabilities.
 end note
-Responded --> [*] : <b>end</b>\nby closer
+Responded --> [*] : <b>end</b>
+note on link
+  * When executed by non-closer
+    then the `CloserAmount` has
+    to be `0`.
+end note
 
 Elapsed --u-> Elapsed : <b>free</b>\nby closer
 Elapsed --d-> Resolved : <b>resolve</b>\nby non-closer
 note on link
-  * Releases account assets but still covering remaining liabilities.
-  * Non-closer `Pend` is empty - it was discarded (as "penalty") during the previous `elapse`.
+  * Releases account assets still
+    covering remaining liabilities.
+  * Non-closer `Pend` is empty.
+    It was discarded (as a "penalty")
+    during the previous `elapse`.
 end note
-Elapsed --d-> [*] : <b>end</b>\nby non-closer
+Elapsed --d-> [*] : <b>end</b>\nby min-ada-owner
 note on link
-  * Possibly releases account
-  assets to non-closer.
+  * When executed by non-closer
+    releases account assets.
+  * When executed by closer ensures
+    empty non-closer balance.
 end note
 
 Resolved --u-> Resolved : <b>free</b>
-Resolved --> [*] : <b>end</b>
+Resolved --> [*] : <b>end</b>\nby min-ada-owner
+
+Closed --> [*] : <b>end</b>\nby min-ada-owner
+note on link
+  * When executed by closer then it combines
+    `elapse` with subsequent `end` logic.
+  * When executed by non-closer then it combines
+    `respond` with `end` logic.
+end note
 
 @enduml
 

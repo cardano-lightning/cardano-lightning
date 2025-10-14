@@ -460,6 +460,10 @@ fn do_reduce_received_pend(
 ) -> Amount {
   when (pends_in, secrets) is {
     (_, []) -> {
+      trace @"ReduceReceivedPend.Con.0: At the end of reduction `secrets == []` && `pends_in == pends_out`": (
+        pends_in,
+        pends_out,
+      )
       expect pends_out == pends_in
       0
     }
@@ -507,15 +511,21 @@ fn reduce_sent_pend(
 ) -> Amount {
   when pends_in is {
     [] -> {
+      trace @"ReduceSentPend.Con.0: At the end of reduction `pends_in == []` && `pends_out == []`": (
+        pends_in,
+        pends_out,
+      )
       expect pends_out == []
       0
     }
     [(amt_in, timeout_in, lock_in), ..rest_in] ->
       if timeout_in < lb {
+        trace @"ReduceSentPend.Con.1: `pend.timeout < lb`": (timeout_in, lb)
         // Timeout has passed - skip this entry in the output.
         // Add its amount to the released amount.
         amt_in + reduce_sent_pend(rest_in, pends_out, lb)
       } else {
+        trace @"ReduceSentPend.Con.2: `pend.timeout >= lb`": (timeout_in, lb)
         expect [(amt_out, timeout_out, lock_out), ..rest_out] = pends_out
         // Timeout has not passed - keep entry in the output
         // checking if it is honestly preserved
@@ -846,7 +856,7 @@ pub fn do_free_in_resolved(
 }
 
 pub fn do_end(
-  by_closer: Bool,
+  user_idx: t.KeyIdx,
   secrets: t.Secrets,
   lb: PosixMilliseconds,
   ub: PosixMilliseconds,
@@ -861,20 +871,38 @@ pub fn do_end(
   trace @"End.Out.0": @"No continuing output (channel is ended)"
 
   trace @"End.Con": @"Constraints by stage"
+  trace @"End.Con.0": @"`user_idx` indicates if the user is the closer (0) as we are not in the `Opened` stage anymore"
+  let by_closer = user_idx == 0
   let (received_pends, sent_pends) =
+    // Closed(Amount, Squash, Timeout, Pend)
     when stage_in is {
+      t.Closed(_amount, _non_closer_squash, timeout, closer_pends) -> {
+        trace @"End.Con.1": @"When Closed(amt, squash, timeout, pends) = stage_in"
+        trace @"End.Con.1.0": @"`timeout < lb` (respond period has passed)"
+        expect timeout < lb
+        trace @"End.Con.1.1": @"closer signed the tx"
+        expect by_closer
+        (closer_pends, [])
+      }
       t.Elapsed(closer_pends) -> {
         trace @"End.Con.1": @"When `stage_in` is Elapsed"
-        trace @"End.Con.1.0": @"non-closer signed the tx"
-        expect !by_closer
-        ([], closer_pends)
+        if by_closer {
+          trace @"End.Con.1.0: If closer signed the tx then the `tot_in == sum(closer_pends)`"
+          expect tot_in == sum_pend(closer_pends)
+          (closer_pends, [])
+        } else {
+          ([], closer_pends)
+        }
       }
-      t.Resolved(closer_pends, non_closer_pends) ->
+      t.Resolved(closer_pends, non_closer_pends) -> {
+        trace @"End.Con.0": @"When `stage_in` is Resolved"
+        trace @"End.Con.0.0": @"Either party can sign the tx"
         if by_closer {
           (closer_pends, non_closer_pends)
         } else {
           (non_closer_pends, closer_pends)
         }
+      }
       t.Responded(_, closer_pends, non_closer_pends) -> {
         trace @"End.Con.0": @"When `stage_in` is Responded"
         // At this stage the closer funds are still locked in the channel possibly together with some non reduced pends.
