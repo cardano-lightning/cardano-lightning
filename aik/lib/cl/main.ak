@@ -232,23 +232,22 @@ pub fn reduce(
                 )
               }
               t.End(secrets) -> {
-                let self =
+                let min_ada_owner_key =
                   when min_ada_owner_in is {
                     0 -> keys_in.1st
                     _ -> keys_in.2nd
                   }
-                expect is_vk_signer(self, signers)
-
-                let by_closer = self == keys_in.1st
+                expect is_vk_signer(min_ada_owner_key, signers)
                 expect
                   do_end(
-                    by_closer,
+                    min_ada_owner_in,
                     secrets,
                     exclusive_lower_bound(validity_range),
                     exclusive_upper_bound(validity_range),
                     tot_in,
                     stage_in,
                   )
+                trace @"Channel ended"
                 reduce(
                   own_hash,
                   signers,
@@ -304,7 +303,9 @@ fn continuing_output(
           min_ada_out,
           min_ada_owner_out,
         ): t.Datum = raw
-        expect min_ada_in == min_ada_out
+        // We allow bumping the min ADA but those extra funds
+        // will belong to the min_ada_owner.
+        expect min_ada_in <= min_ada_out
         expect own_hash_in == own_hash_out
         expect reference_script == None
         (amt, keys_out, stage_out, min_ada_owner_out, rest_outputs)

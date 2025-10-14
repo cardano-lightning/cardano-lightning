@@ -55,6 +55,9 @@ pub type Pend =
 pub type Keys =
   (VerificationKey, VerificationKey)
 
+pub type KeyIdx =
+  Index
+
 pub type Stage {
   Opened(Amount, Snapshot, Period)
   Closed(Amount, Squash, Timeout, Pend)
