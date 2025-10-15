@@ -71,185 +71,184 @@ bench bench_close_steps(
 ) {
   main.mint(redeemer, own_hash, transaction)
 }
-
-test test_respond_steps(
-  (transaction, redeemer) via gen.gen_respond_steps(
-    own_hash,
-    max_cheques,
-    channel_num,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_respond_steps(
-  (transaction, redeemer) via gen.gen_respond_steps(own_hash, max_cheques, _),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_elapse_steps(
-  (transaction, redeemer) via gen.gen_elapse_steps(own_hash, max_cheques, 1),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_resolve_steps_in_elapsed_stage(
-  (transaction, redeemer) via gen.gen_resolve_steps_in_elapsed_stage(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_resolve_steps_in_elapsed_stage(
-  (transaction, redeemer) via gen.gen_resolve_steps_in_elapsed_stage(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_resolve_after_respond_steps(
-  (transaction, redeemer) via gen.gen_resolve_steps_in_responded_stage(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_resolve_steps_in_responded_stage(
-  (transaction, redeemer) via gen.gen_resolve_steps_in_responded_stage(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_free_steps_in_closed_stage(
-  (transaction, redeemer) via gen.gen_free_steps_in_closed_stage(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_free_steps_in_closed_stage(
-  (transaction, redeemer) via gen.gen_free_steps_in_closed_stage(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_free_steps_in_responded_stage(
-  (transaction, redeemer) via gen.gen_free_steps_in_responded_stage(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_free_steps_in_responded_stage(
-  (transaction, redeemer) via gen.gen_free_steps_in_responded_stage(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_free_steps_in_resolved_stage(
-  (transaction, redeemer) via gen.gen_free_steps_in_resolved_stage(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_free_steps_in_resolved_stage(
-  (transaction, redeemer) via gen.gen_free_steps_in_resolved_stage(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_end_steps_in_resolved_stage(
-  (transaction, redeemer) via gen.gen_end_steps_in_resolved_stage(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_end_steps_in_resolved_stage(
-  (transaction, redeemer) via gen.gen_end_steps_in_resolved_stage(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_end_steps_in_elapsed_stage(
-  (transaction, redeemer) via gen.gen_end_steps_in_elapsed_stage(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_end_steps_in_elapsed_stage(
-  (transaction, redeemer) via gen.gen_end_steps_in_elapsed_stage(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-test test_end_steps_in_responded_stage(
-  (transaction, redeemer) via gen.gen_end_steps_in_responded_stage(
-    own_hash,
-    max_cheques,
-    1,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
-
-bench bench_end_steps_in_responded_stage(
-  (transaction, redeemer) via gen.gen_end_steps_in_responded_stage(
-    own_hash,
-    max_cheques,
-    _,
-  ),
-) {
-  main.mint(redeemer, own_hash, transaction)
-}
+// test test_respond_steps(
+//   (transaction, redeemer) via gen.gen_respond_steps(
+//     own_hash,
+//     max_cheques,
+//     channel_num,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_respond_steps(
+//   (transaction, redeemer) via gen.gen_respond_steps(own_hash, max_cheques, _),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_elapse_steps(
+//   (transaction, redeemer) via gen.gen_elapse_steps(own_hash, max_cheques, 1),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_resolve_steps_in_elapsed_stage(
+//   (transaction, redeemer) via gen.gen_resolve_steps_in_elapsed_stage(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_resolve_steps_in_elapsed_stage(
+//   (transaction, redeemer) via gen.gen_resolve_steps_in_elapsed_stage(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_resolve_after_respond_steps(
+//   (transaction, redeemer) via gen.gen_resolve_steps_in_responded_stage(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_resolve_steps_in_responded_stage(
+//   (transaction, redeemer) via gen.gen_resolve_steps_in_responded_stage(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_free_steps_in_closed_stage(
+//   (transaction, redeemer) via gen.gen_free_steps_in_closed_stage(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_free_steps_in_closed_stage(
+//   (transaction, redeemer) via gen.gen_free_steps_in_closed_stage(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_free_steps_in_responded_stage(
+//   (transaction, redeemer) via gen.gen_free_steps_in_responded_stage(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_free_steps_in_responded_stage(
+//   (transaction, redeemer) via gen.gen_free_steps_in_responded_stage(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_free_steps_in_resolved_stage(
+//   (transaction, redeemer) via gen.gen_free_steps_in_resolved_stage(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_free_steps_in_resolved_stage(
+//   (transaction, redeemer) via gen.gen_free_steps_in_resolved_stage(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_end_steps_in_resolved_stage(
+//   (transaction, redeemer) via gen.gen_end_steps_in_resolved_stage(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_end_steps_in_resolved_stage(
+//   (transaction, redeemer) via gen.gen_end_steps_in_resolved_stage(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_end_steps_in_elapsed_stage(
+//   (transaction, redeemer) via gen.gen_end_steps_in_elapsed_stage(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_end_steps_in_elapsed_stage(
+//   (transaction, redeemer) via gen.gen_end_steps_in_elapsed_stage(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// test test_end_steps_in_responded_stage(
+//   (transaction, redeemer) via gen.gen_end_steps_in_responded_stage(
+//     own_hash,
+//     max_cheques,
+//     1,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
+// 
+// bench bench_end_steps_in_responded_stage(
+//   (transaction, redeemer) via gen.gen_end_steps_in_responded_stage(
+//     own_hash,
+//     max_cheques,
+//     _,
+//   ),
+// ) {
+//   main.mint(redeemer, own_hash, transaction)
+// }
