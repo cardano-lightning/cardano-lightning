@@ -9,7 +9,7 @@ use cardano/transaction.{
 use cl/channel
 use cl/prelude.{Amount, PosixMilliseconds}
 use cl/step.{
-  do_add, do_close, do_elapse, do_end, do_free, do_free_in_resolved, do_resolve,
+  do_add, do_close, do_elapse, do_end, do_free_in_closed, do_free_in_resolved,
   do_respond, is_vk_signer,
 }
 use cl/token
@@ -164,8 +164,8 @@ pub fn reduce(
                         keys_out,
                         stage_out,
                       )
-                    t.Free(secrets, drop_old) ->
-                      do_free(
+                    t.FreeInClosed { secrets, drop_old } ->
+                      do_free_in_closed(
                         signers,
                         exclusive_lower_bound(validity_range),
                         exclusive_upper_bound(validity_range),
@@ -193,20 +193,20 @@ pub fn reduce(
                         keys_out,
                         stage_out,
                       )
-                    t.Resolve(secrets, drop_old) ->
-                      do_resolve(
-                        signers,
-                        exclusive_lower_bound(validity_range),
-                        exclusive_upper_bound(validity_range),
-                        secrets,
-                        drop_old,
-                        keys_in,
-                        stage_in,
-                        tot_out,
-                        keys_out,
-                        stage_out,
-                      )
-                    t.Respond(receipt, drop_old) ->
+                    // t.Resolve { secrets, drop_old } ->
+                    //   do_resolve(
+                    //     signers,
+                    //     exclusive_lower_bound(validity_range),
+                    //     exclusive_upper_bound(validity_range),
+                    //     secrets,
+                    //     drop_old,
+                    //     keys_in,
+                    //     stage_in,
+                    //     tot_out,
+                    //     keys_out,
+                    //     stage_out,
+                    //   )
+                    t.Respond { receipt, drop_old } ->
                       do_respond(
                         cid,
                         signers,

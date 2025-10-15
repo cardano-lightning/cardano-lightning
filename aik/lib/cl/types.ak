@@ -58,12 +58,19 @@ pub type Keys =
 pub type KeyIdx =
   Index
 
+pub type NonOpenerWithdrawal =
+  Amount
+
+pub type CloserWithdrawal =
+  Amount
+
+pub type NonResolverWithdrawal =
+  Amount
+
 pub type Stage {
-  Opened(Amount, Snapshot, Period)
-  Closed(Amount, Squash, Timeout, Pend)
-  Responded(Amount, Pend, Pend)
-  Elapsed(Pend)
-  Resolved(Pend, Pend)
+  Opened(NonOpenerWithdrawal, Snapshot, Period)
+  Closed(CloserWithdrawal, Squash, Timeout, Pend)
+  Resolved(NonResolverWithdrawal, Pend, Pend)
 }
 
 // min ADA expressed in ADA (1_000_000 Lovelace)
@@ -101,9 +108,8 @@ pub type NStep {
 pub type CStep {
   Add { by_opener: Bool, snapshot: Option<Signed<Snapshot>> }
   Close { by_opener: Bool, receipt: Receipt }
-  Respond(Receipt, DropOld)
-  Resolve(Secrets, DropOld)
   Elapse(Secrets)
-  Free(Secrets, DropOld)
+  FreeInClosed { secrets: Secrets, drop_old: DropOld }
   FreeInResolved { by_closer: Bool, secrets: Secrets, drop_old: DropOld }
+  Respond { receipt: Receipt, drop_old: DropOld }
 }

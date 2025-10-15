@@ -1240,7 +1240,7 @@ pub fn gen_respond_step_tx(
         (
           own_hash,
           keys,
-          t.Responded(closer_amt_out, closer_pends_out, non_closer_pends_out),
+          t.Resolved(closer_amt_out, closer_pends_out, non_closer_pends_out),
           min_ada,
           min_ada_owner,
         ),
@@ -1369,7 +1369,8 @@ pub fn gen_elapse_step(
     )
   let close_input = tx.Input(close_out_ref, close_output)
 
-  let stage_out = t.Elapsed(closer_pends_out)
+  // FIXME: withdrawal amount should not be zero
+  let stage_out = t.Resolved(0, closer_pends_out, [])
   let elapse_output =
     tx.Output(
       own_addr,
@@ -1421,239 +1422,239 @@ pub fn gen_elapse_steps(
   fuzz.constant((transaction, redeemer))
 }
 
-pub fn gen_resolve_step_in_elapsed_stage(
-  own_addr,
-  max_chqs,
-  validity_range: ExclusiveValidityRange,
-) -> Fuzzer<(Tx, t.DropOld)> {
-  expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
-    own_addr
-  expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
-
-  // Generate `closer` pends which at least cover 1 Lovelace
-  // with non expired chqs
-  let closer_pends_in <- and_then(gen_pends(1, max_chqs, 1, max_sq_amt, lb, ub))
-  let drop_old <- and_then(fuzz.bool())
-  let closer_pends_out = do_drop_old(drop_old, closer_pends_in, lb)
-  let tot_in <-
-    and_then(fuzz.int_between(sum_pends(closer_pends_in), max_channel_amt))
-
-  // Ensure non-zero to avoid full drain
-  let cid <- and_then(gen_channel_id())
-  let keys_in <- and_then(gen_keys())
-
-  let stage_in = t.Elapsed(closer_pends_in)
-  let elapse_out_ref <- and_then(cardano.output_reference())
-  let min_ada_owner <- and_then(fuzz.int_between(0, 1))
-  let elapse_output =
-    tx.Output(
-      own_addr,
-      assets.from_lovelace(tot_in + min_ada * 1_000_000)
-        |> assets.add(own_hash, token.cid_to_token(cid), 1),
-      InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
-      None,
-    )
-  let elapse_input = tx.Input(elapse_out_ref, elapse_output)
-
-  // Non-closer pends are empty because we ignore them during the `elapse`
-  let non_closer_pends_out = []
-  let tot_out = sum_pends(closer_pends_out)
-  let stage_out = t.Resolved(closer_pends_out, non_closer_pends_out)
-  let resolve_output =
-    tx.Output(
-      own_addr,
-      assets.from_lovelace(tot_out + min_ada * 1_000_000)
-        |> assets.add(own_hash, token.cid_to_token(cid), 1),
-      InlineDatum((own_hash, keys_in, stage_out, min_ada, min_ada_owner)),
-      None,
-    )
-
-  let signatory = blake2b_224(keys_in.2nd)
-  // Non-closer signs (vk1)
-  let tx =
-    Tx(
-      [elapse_input],
-      [resolve_output],
-      [signatory],
-      validity_range,
-      mempty_mints,
-    )
-  fuzz.constant((tx, drop_old))
-}
-
-pub fn gen_resolve_steps_in_elapsed_stage(
-  own_hash,
-  max_chqs,
-  n_steps,
-) -> Fuzzer<(Transaction, t.MintRedeemer)> {
-  let validity_range <- and_then(gen_validity_range())
-  // Reuse for safe bounds
-  let own_addr <-
-    and_then(cardano.address_with_payment_credential(Script(own_hash)))
-  let txs_with_params <-
-    and_then(
-      fuzz_contrib.traverse_list(
-        list.range(1, n_steps),
-        fn(_) {
-          gen_resolve_step_in_elapsed_stage(own_addr, max_chqs, validity_range)
-        },
-      ),
-    )
-  let tx =
-    txs_with_params
-      |> list.map(fn((t, _)) { t })
-      |> list.reduce(mempty_tx, tx_mappend)
-  let transaction = tx |> tx_to_transaction(own_hash)
-  let secrets = []
-  // No secrets needed for resolve from Elapsed (per do_resolve logic)
-  let redeemer =
-    (
-      None,
-      txs_with_params
-        |> list.map(
-            fn((_, drop_old)) { t.Continuing(t.Resolve(secrets, drop_old)) },
-          ),
-    )
-  fuzz.constant((transaction, redeemer))
-}
-
-// This step is executed by the `closer`:
-// * `closer` releases the account money
-// * the remaining should still cover the pending chqs
-pub fn gen_resolve_step_in_responded_stage(
-  own_addr: Address,
-  max_chqs: Int,
-  validity_range: ExclusiveValidityRange,
-) -> Fuzzer<(Tx, t.Secrets, t.DropOld)> {
-  expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
-    own_addr
-  expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
-
-  // Generate `Responded` stage
-  let closer_pends_in <-
-    and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
-  // We generate `closer` pends out so we know if
-  // we need non-closer pends to avoid full resolution
-  let secrets <- and_then(gen_secrets(closer_pends_in, ub, AllowFullReduction))
-  let closer_pends_out = reduce_pends(closer_pends_in, secrets, ub)
-
-  // Ensure that there are some non-expired pending chqs
-  let min_non_closer_pends =
-    if closer_pends_out == [] {
-      1
-    } else {
-      0
-    }
-  let non_closer_pends_in <-
-    and_then(
-      gen_pends(0, max_chqs / 2, min_non_closer_pends, max_sq_amt / 2, lb, ub),
-    )
-  let closer_amt_in <- and_then(fuzz.int_between(1, max_channel_amt / 4))
-  let tot_in =
-    closer_amt_in + sum_pends(closer_pends_in) + sum_pends(non_closer_pends_in)
-  let stage_in =
-    t.Responded(closer_amt_in, closer_pends_in, non_closer_pends_in)
-
-  // Create channel input UTxO
-  let cid <- and_then(gen_channel_id())
-  let keys_in <- and_then(gen_keys())
-  let respond_out_ref <- and_then(cardano.output_reference())
-  let min_ada_owner <- and_then(fuzz.int_between(0, 1))
-  let respond_output =
-    tx.Output(
-      own_addr,
-      assets.from_lovelace(tot_in + min_ada * 1_000_000)
-        |> assets.add(own_hash, token.cid_to_token(cid), 1),
-      InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
-      None,
-    )
-  let respond_input = tx.Input(respond_out_ref, respond_output)
-
-  let drop_old <-
-    and_then(
-      if closer_pends_out == [] {
-        // We want to preserve at least some non-closer pends
-        // if all the closer pends where reduced
-        fuzz.constant(False)
-      } else {
-        fuzz.bool()
-      },
-    )
-
-  // Calculate `Resolved` stage
-  let non_closer_pends_out = do_drop_old(drop_old, non_closer_pends_in, lb)
-
-  let tot_out = sum_pends(closer_pends_out) + sum_pends(non_closer_pends_out)
-  trace @"gen_resolve_after_respond_step: closer_pends_out": closer_pends_out
-  trace @"gen_resolve_after_respond_step: non_closer_pends_out": non_closer_pends_out
-  trace @"gen_resolve_after_respond_step: tot_out": tot_out
-  // We can have an empty channel. This is allowed because of the min ADA handling.
-  // Validator doesn't care if a given channel could be ended or not really.
-  expect tot_out >= 0
-
-  // Ensure we not fully drain the channel
-  let stage_out = t.Resolved(closer_pends_out, non_closer_pends_out)
-  let resolve_output =
-    tx.Output(
-      own_addr,
-      assets.from_lovelace(tot_out + min_ada * 1_000_000)
-        |> assets.add(own_hash, token.cid_to_token(cid), 1),
-      InlineDatum((own_hash, keys_in, stage_out, min_ada, min_ada_owner)),
-      None,
-    )
-
-  let signatory = blake2b_224(keys_in.1st)
-  // Closer signs (vk0)
-  let tx =
-    Tx(
-      [respond_input],
-      [resolve_output],
-      [signatory],
-      validity_range,
-      mempty_mints,
-    )
-  fuzz.constant((tx, secrets, drop_old))
-}
-
-pub fn gen_resolve_steps_in_responded_stage(
-  own_hash: ScriptHash,
-  max_chqs: Int,
-  n_steps: Int,
-) -> Fuzzer<(Transaction, t.MintRedeemer)> {
-  let validity_range <- and_then(gen_validity_range())
-  // Reuse safe bounds
-  let own_addr <-
-    and_then(cardano.address_with_payment_credential(Script(own_hash)))
-  let txs_with_params <-
-    and_then(
-      fuzz_contrib.traverse_list(
-        list.range(1, n_steps),
-        fn(_) {
-          gen_resolve_step_in_responded_stage(
-            own_addr,
-            max_chqs,
-            validity_range,
-          )
-        },
-      ),
-    )
-  let tx =
-    txs_with_params
-      |> list.map(fn((t, _, _)) { t })
-      |> list.reduce(mempty_tx, tx_mappend)
-  let transaction = tx |> tx_to_transaction(own_hash)
-  let redeemer =
-    (
-      None,
-      txs_with_params
-        |> list.map(
-            fn((_, secrets, drop_old)) {
-              t.Continuing(t.Resolve(secrets, drop_old))
-            },
-          ),
-    )
-  fuzz.constant((transaction, redeemer))
-}
+// pub fn gen_resolve_step_in_elapsed_stage(
+//   own_addr,
+//   max_chqs,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.DropOld)> {
+//   expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
+//     own_addr
+//   expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
+// 
+//   // Generate `closer` pends which at least cover 1 Lovelace
+//   // with non expired chqs
+//   let closer_pends_in <- and_then(gen_pends(1, max_chqs, 1, max_sq_amt, lb, ub))
+//   let drop_old <- and_then(fuzz.bool())
+//   let closer_pends_out = do_drop_old(drop_old, closer_pends_in, lb)
+//   let tot_in <-
+//     and_then(fuzz.int_between(sum_pends(closer_pends_in), max_channel_amt))
+// 
+//   // Ensure non-zero to avoid full drain
+//   let cid <- and_then(gen_channel_id())
+//   let keys_in <- and_then(gen_keys())
+// 
+//   let stage_in = t.Elapsed(closer_pends_in)
+//   let elapse_out_ref <- and_then(cardano.output_reference())
+//   let min_ada_owner <- and_then(fuzz.int_between(0, 1))
+//   let elapse_output =
+//     tx.Output(
+//       own_addr,
+//       assets.from_lovelace(tot_in + min_ada * 1_000_000)
+//         |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//       InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
+//       None,
+//     )
+//   let elapse_input = tx.Input(elapse_out_ref, elapse_output)
+// 
+//   // Non-closer pends are empty because we ignore them during the `elapse`
+//   let non_closer_pends_out = []
+//   let tot_out = sum_pends(closer_pends_out)
+//   let stage_out = t.Resolved(closer_pends_out, non_closer_pends_out)
+//   let resolve_output =
+//     tx.Output(
+//       own_addr,
+//       assets.from_lovelace(tot_out + min_ada * 1_000_000)
+//         |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//       InlineDatum((own_hash, keys_in, stage_out, min_ada, min_ada_owner)),
+//       None,
+//     )
+// 
+//   let signatory = blake2b_224(keys_in.2nd)
+//   // Non-closer signs (vk1)
+//   let tx =
+//     Tx(
+//       [elapse_input],
+//       [resolve_output],
+//       [signatory],
+//       validity_range,
+//       mempty_mints,
+//     )
+//   fuzz.constant((tx, drop_old))
+// }
+//
+// pub fn gen_resolve_steps_in_elapsed_stage(
+//   own_hash,
+//   max_chqs,
+//   n_steps,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+//   let validity_range <- and_then(gen_validity_range())
+//   // Reuse for safe bounds
+//   let own_addr <-
+//     and_then(cardano.address_with_payment_credential(Script(own_hash)))
+//   let txs_with_params <-
+//     and_then(
+//       fuzz_contrib.traverse_list(
+//         list.range(1, n_steps),
+//         fn(_) {
+//           gen_resolve_step_in_elapsed_stage(own_addr, max_chqs, validity_range)
+//         },
+//       ),
+//     )
+//   let tx =
+//     txs_with_params
+//       |> list.map(fn((t, _)) { t })
+//       |> list.reduce(mempty_tx, tx_mappend)
+//   let transaction = tx |> tx_to_transaction(own_hash)
+//   let secrets = []
+//   // No secrets needed for resolve from Elapsed (per do_resolve logic)
+//   let redeemer =
+//     (
+//       None,
+//       txs_with_params
+//         |> list.map(
+//             fn((_, drop_old)) { t.Continuing(t.Resolve(secrets, drop_old)) },
+//           ),
+//     )
+//   fuzz.constant((transaction, redeemer))
+// }
+// 
+// // This step is executed by the `closer`:
+// // * `closer` releases the account money
+// // * the remaining should still cover the pending chqs
+// pub fn gen_resolve_step_in_responded_stage(
+//   own_addr: Address,
+//   max_chqs: Int,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets, t.DropOld)> {
+//   expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
+//     own_addr
+//   expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
+// 
+//   // Generate `Responded` stage
+//   let closer_pends_in <-
+//     and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
+//   // We generate `closer` pends out so we know if
+//   // we need non-closer pends to avoid full resolution
+//   let secrets <- and_then(gen_secrets(closer_pends_in, ub, AllowFullReduction))
+//   let closer_pends_out = reduce_pends(closer_pends_in, secrets, ub)
+// 
+//   // Ensure that there are some non-expired pending chqs
+//   let min_non_closer_pends =
+//     if closer_pends_out == [] {
+//       1
+//     } else {
+//       0
+//     }
+//   let non_closer_pends_in <-
+//     and_then(
+//       gen_pends(0, max_chqs / 2, min_non_closer_pends, max_sq_amt / 2, lb, ub),
+//     )
+//   let closer_amt_in <- and_then(fuzz.int_between(1, max_channel_amt / 4))
+//   let tot_in =
+//     closer_amt_in + sum_pends(closer_pends_in) + sum_pends(non_closer_pends_in)
+//   let stage_in =
+//     t.Responded(closer_amt_in, closer_pends_in, non_closer_pends_in)
+// 
+//   // Create channel input UTxO
+//   let cid <- and_then(gen_channel_id())
+//   let keys_in <- and_then(gen_keys())
+//   let respond_out_ref <- and_then(cardano.output_reference())
+//   let min_ada_owner <- and_then(fuzz.int_between(0, 1))
+//   let respond_output =
+//     tx.Output(
+//       own_addr,
+//       assets.from_lovelace(tot_in + min_ada * 1_000_000)
+//         |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//       InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
+//       None,
+//     )
+//   let respond_input = tx.Input(respond_out_ref, respond_output)
+// 
+//   let drop_old <-
+//     and_then(
+//       if closer_pends_out == [] {
+//         // We want to preserve at least some non-closer pends
+//         // if all the closer pends where reduced
+//         fuzz.constant(False)
+//       } else {
+//         fuzz.bool()
+//       },
+//     )
+// 
+//   // Calculate `Resolved` stage
+//   let non_closer_pends_out = do_drop_old(drop_old, non_closer_pends_in, lb)
+// 
+//   let tot_out = sum_pends(closer_pends_out) + sum_pends(non_closer_pends_out)
+//   trace @"gen_resolve_after_respond_step: closer_pends_out": closer_pends_out
+//   trace @"gen_resolve_after_respond_step: non_closer_pends_out": non_closer_pends_out
+//   trace @"gen_resolve_after_respond_step: tot_out": tot_out
+//   // We can have an empty channel. This is allowed because of the min ADA handling.
+//   // Validator doesn't care if a given channel could be ended or not really.
+//   expect tot_out >= 0
+// 
+//   // Ensure we not fully drain the channel
+//   let stage_out = t.Resolved(closer_pends_out, non_closer_pends_out)
+//   let resolve_output =
+//     tx.Output(
+//       own_addr,
+//       assets.from_lovelace(tot_out + min_ada * 1_000_000)
+//         |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//       InlineDatum((own_hash, keys_in, stage_out, min_ada, min_ada_owner)),
+//       None,
+//     )
+// 
+//   let signatory = blake2b_224(keys_in.1st)
+//   // Closer signs (vk0)
+//   let tx =
+//     Tx(
+//       [respond_input],
+//       [resolve_output],
+//       [signatory],
+//       validity_range,
+//       mempty_mints,
+//     )
+//   fuzz.constant((tx, secrets, drop_old))
+// }
+// 
+// pub fn gen_resolve_steps_in_responded_stage(
+//   own_hash: ScriptHash,
+//   max_chqs: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+//   let validity_range <- and_then(gen_validity_range())
+//   // Reuse safe bounds
+//   let own_addr <-
+//     and_then(cardano.address_with_payment_credential(Script(own_hash)))
+//   let txs_with_params <-
+//     and_then(
+//       fuzz_contrib.traverse_list(
+//         list.range(1, n_steps),
+//         fn(_) {
+//           gen_resolve_step_in_responded_stage(
+//             own_addr,
+//             max_chqs,
+//             validity_range,
+//           )
+//         },
+//       ),
+//     )
+//   let tx =
+//     txs_with_params
+//       |> list.map(fn((t, _, _)) { t })
+//       |> list.reduce(mempty_tx, tx_mappend)
+//   let transaction = tx |> tx_to_transaction(own_hash)
+//   let redeemer =
+//     (
+//       None,
+//       txs_with_params
+//         |> list.map(
+//             fn((_, secrets, drop_old)) {
+//               t.Continuing(t.Resolve(secrets, drop_old))
+//             },
+//           ),
+//     )
+//   fuzz.constant((transaction, redeemer))
+// }
 
 // // Executed by the `closer` in the `Closed` stage
 pub fn gen_free_step_in_closed_stage(
@@ -1747,141 +1748,141 @@ pub fn gen_free_steps_in_closed_stage(
       None,
       txs_with_params
         |> list.map(
-            fn((_, secrets)) { t.Continuing(t.Free(secrets, drop_old)) },
+            fn((_, secrets)) { t.Continuing(t.FreeInClosed(secrets, drop_old)) },
           ),
     )
   fuzz.constant((transaction, redeemer))
 }
 
-// Executed by the `non-closer` in the `Responded` stage
-pub fn gen_free_step_in_responded_stage(
-  own_addr: Address,
-  max_chqs: Int,
-  validity_range: ExclusiveValidityRange,
-) -> Fuzzer<(Tx, t.Secrets, t.DropOld)> {
-  expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
-    own_addr
-  expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
-
-  let closer_pends_in <-
-    and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
-  // Even if we reduce everything we should stay in the `Responded` stage.
-  // We just enabled the `closer` to directly `end` the channel.
-  let drop_old <- and_then(fuzz.bool())
-  let closer_pends_out = do_drop_old(drop_old, closer_pends_in, lb)
-  let sent_freed = sum_pends(closer_pends_in) - sum_pends(closer_pends_out)
-
-  let min_non_closer_pends_in =
-    if sent_freed == 0 {
-      1
-    } else {
-      0
-    }
-  let non_closer_pends_in <-
-    and_then(
-      gen_pends(
-        0,
-        max_chqs / 2,
-        min_non_closer_pends_in,
-        max_sq_amt / 2,
-        lb,
-        ub,
-      ),
-    )
-
-  // Enforce at least one reduction if nothing was freed
-  // to prevent noop step
-  let secrets <-
-    and_then(
-      if sent_freed == 0 {
-        gen_non_empty_secrets(non_closer_pends_in, ub, AllowFullReduction)
-      } else {
-        gen_secrets(non_closer_pends_in, ub, AllowFullReduction)
-      },
-    )
-
-  let non_closer_pends_out = reduce_pends(non_closer_pends_in, secrets, ub)
-  let received_reduced =
-    sum_pends(non_closer_pends_in) - sum_pends(non_closer_pends_out)
-  let min_closer_amt_in =
-    if closer_pends_out == [] {
-      1
-    } else {
-      0
-    }
-  let closer_amt_in <-
-    and_then(fuzz.int_between(min_closer_amt_in, max_channel_amt / 2))
-  let tot_in =
-    closer_amt_in + sum_pends(closer_pends_in) + sum_pends(non_closer_pends_in)
-  let stage_in =
-    t.Responded(closer_amt_in, closer_pends_in, non_closer_pends_in)
-  let cid <- and_then(gen_channel_id())
-  let keys_in <- and_then(gen_keys())
-  let min_ada_owner <- and_then(fuzz.int_between(0, 1))
-  let responded_out_ref <- and_then(cardano.output_reference())
-  let responded_output =
-    tx.Output(
-      own_addr,
-      assets.from_lovelace(tot_in + min_ada * 1_000_000)
-        |> assets.add(own_hash, token.cid_to_token(cid), 1),
-      InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
-      None,
-    )
-  let responded_input = tx.Input(responded_out_ref, responded_output)
-  let tot_out = tot_in - received_reduced - sent_freed
-  expect tot_out > 0
-  // Avoid full drain
-  let stage_out =
-    t.Responded(closer_amt_in, closer_pends_out, non_closer_pends_out)
-  let output =
-    tx.Output(
-      own_addr,
-      assets.from_lovelace(tot_out + min_ada * 1_000_000)
-        |> assets.add(own_hash, token.cid_to_token(cid), 1),
-      InlineDatum((own_hash, keys_in, stage_out, min_ada, min_ada_owner)),
-      None,
-    )
-  // Non-closer signs (vk1)
-  let signatory = blake2b_224(keys_in.2nd)
-  let tx =
-    Tx([responded_input], [output], [signatory], validity_range, mempty_mints)
-  fuzz.constant((tx, secrets, drop_old))
-}
-
-pub fn gen_free_steps_in_responded_stage(
-  own_hash: ScriptHash,
-  max_chqs: Int,
-  n_steps: Int,
-) -> Fuzzer<(Transaction, t.MintRedeemer)> {
-  let validity_range <- and_then(gen_validity_range())
-  let own_addr <-
-    and_then(cardano.address_with_payment_credential(Script(own_hash)))
-  let txs_with_params <-
-    and_then(
-      fuzz_contrib.traverse_list(
-        list.range(1, n_steps),
-        fn(_) {
-          gen_free_step_in_responded_stage(own_addr, max_chqs, validity_range)
-        },
-      ),
-    )
-  let tx =
-    txs_with_params
-      |> list.map(fn((t, _, _)) { t })
-      |> list.reduce(mempty_tx, tx_mappend)
-  let transaction = tx |> tx_to_transaction(own_hash)
-  let redeemer =
-    (
-      None,
-      txs_with_params
-        |> list.map(
-            fn((_, secrets, drop_old)) {
-              t.Continuing(t.Free(secrets, drop_old))
-            },
-          ),
-    )
-  fuzz.constant((transaction, redeemer))
-}
+// // Executed by the `non-closer` in the `Responded` stage
+// pub fn gen_free_step_in_responded_stage(
+//   own_addr: Address,
+//   max_chqs: Int,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets, t.DropOld)> {
+//   expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
+//     own_addr
+//   expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
+// 
+//   let closer_pends_in <-
+//     and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
+//   // Even if we reduce everything we should stay in the `Responded` stage.
+//   // We just enabled the `closer` to directly `end` the channel.
+//   let drop_old <- and_then(fuzz.bool())
+//   let closer_pends_out = do_drop_old(drop_old, closer_pends_in, lb)
+//   let sent_freed = sum_pends(closer_pends_in) - sum_pends(closer_pends_out)
+// 
+//   let min_non_closer_pends_in =
+//     if sent_freed == 0 {
+//       1
+//     } else {
+//       0
+//     }
+//   let non_closer_pends_in <-
+//     and_then(
+//       gen_pends(
+//         0,
+//         max_chqs / 2,
+//         min_non_closer_pends_in,
+//         max_sq_amt / 2,
+//         lb,
+//         ub,
+//       ),
+//     )
+// 
+//   // Enforce at least one reduction if nothing was freed
+//   // to prevent noop step
+//   let secrets <-
+//     and_then(
+//       if sent_freed == 0 {
+//         gen_non_empty_secrets(non_closer_pends_in, ub, AllowFullReduction)
+//       } else {
+//         gen_secrets(non_closer_pends_in, ub, AllowFullReduction)
+//       },
+//     )
+// 
+//   let non_closer_pends_out = reduce_pends(non_closer_pends_in, secrets, ub)
+//   let received_reduced =
+//     sum_pends(non_closer_pends_in) - sum_pends(non_closer_pends_out)
+//   let min_closer_amt_in =
+//     if closer_pends_out == [] {
+//       1
+//     } else {
+//       0
+//     }
+//   let closer_amt_in <-
+//     and_then(fuzz.int_between(min_closer_amt_in, max_channel_amt / 2))
+//   let tot_in =
+//     closer_amt_in + sum_pends(closer_pends_in) + sum_pends(non_closer_pends_in)
+//   let stage_in =
+//     t.Responded(closer_amt_in, closer_pends_in, non_closer_pends_in)
+//   let cid <- and_then(gen_channel_id())
+//   let keys_in <- and_then(gen_keys())
+//   let min_ada_owner <- and_then(fuzz.int_between(0, 1))
+//   let responded_out_ref <- and_then(cardano.output_reference())
+//   let responded_output =
+//     tx.Output(
+//       own_addr,
+//       assets.from_lovelace(tot_in + min_ada * 1_000_000)
+//         |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//       InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
+//       None,
+//     )
+//   let responded_input = tx.Input(responded_out_ref, responded_output)
+//   let tot_out = tot_in - received_reduced - sent_freed
+//   expect tot_out > 0
+//   // Avoid full drain
+//   let stage_out =
+//     t.Responded(closer_amt_in, closer_pends_out, non_closer_pends_out)
+//   let output =
+//     tx.Output(
+//       own_addr,
+//       assets.from_lovelace(tot_out + min_ada * 1_000_000)
+//         |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//       InlineDatum((own_hash, keys_in, stage_out, min_ada, min_ada_owner)),
+//       None,
+//     )
+//   // Non-closer signs (vk1)
+//   let signatory = blake2b_224(keys_in.2nd)
+//   let tx =
+//     Tx([responded_input], [output], [signatory], validity_range, mempty_mints)
+//   fuzz.constant((tx, secrets, drop_old))
+// }
+// 
+// pub fn gen_free_steps_in_responded_stage(
+//   own_hash: ScriptHash,
+//   max_chqs: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+//   let validity_range <- and_then(gen_validity_range())
+//   let own_addr <-
+//     and_then(cardano.address_with_payment_credential(Script(own_hash)))
+//   let txs_with_params <-
+//     and_then(
+//       fuzz_contrib.traverse_list(
+//         list.range(1, n_steps),
+//         fn(_) {
+//           gen_free_step_in_responded_stage(own_addr, max_chqs, validity_range)
+//         },
+//       ),
+//     )
+//   let tx =
+//     txs_with_params
+//       |> list.map(fn((t, _, _)) { t })
+//       |> list.reduce(mempty_tx, tx_mappend)
+//   let transaction = tx |> tx_to_transaction(own_hash)
+//   let redeemer =
+//     (
+//       None,
+//       txs_with_params
+//         |> list.map(
+//             fn((_, secrets, drop_old)) {
+//               t.Continuing(t.Free(secrets, drop_old))
+//             },
+//           ),
+//     )
+//   fuzz.constant((transaction, redeemer))
+// }
 
 pub fn has_not_expired(ub, pend) {
   let (_, timeout, _) = pend
@@ -1892,486 +1893,485 @@ pub fn has_expired(lb, pend) {
   let (_, timeout, _) = pend
   timeout < lb
 }
+// pub fn gen_free_step_in_resolved_stage(
+//   own_addr: Address,
+//   max_chqs: Int,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, Bool, Bool, t.Secrets)> {
+//   expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
+//     own_addr
+//   expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
+// 
+//   // The situation in respond is fully symmetrical so we can
+//   // stay agnostic who is who modulo
+//   // the order of the pends in the `Resolved` stage,
+//   // the `by_closer` flag in the redeemer and the signature.
+//   //
+//   // Ensure that the free step is meaningful:
+//   // * Either include at least one sent pend which has expired
+//   // * Or include at least one received pend which has not yet expired and will be resolved
+//   let other_pends_in <-
+//     and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
+//   let other_pends_in_expired =
+//     other_pends_in |> list.filter(fn(pend) { has_expired(lb, pend) })
+//   let self_pends_in <-
+//     and_then(
+//       if other_pends_in_expired == [] {
+//         gen_pends(1, max_chqs / 2, 1, max_sq_amt / 2, lb, ub)
+//       } else {
+//         gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub)
+//       },
+//     )
+// 
+//   let secrets <-
+//     and_then(
+//       if other_pends_in_expired == [] {
+//         gen_non_empty_secrets(self_pends_in, ub, AllowFullReduction)
+//       } else {
+//         gen_secrets(self_pends_in, ub, AllowFullReduction)
+//       },
+//     )
+//   let drop_old <-
+//     and_then(
+//       if secrets == [] {
+//         // Enforce `drop_old` if we don't execute received chqs
+//         // reduction to avoid noop
+//         fuzz.constant(True)
+//       } else {
+//         fuzz.bool()
+//       },
+//     )
+//   let self_pends_out = reduce_pends(self_pends_in, secrets, ub)
+//   let other_pends_out = do_drop_old(drop_old, other_pends_in, lb)
+// 
+//   let keys_in <- and_then(gen_keys())
+//   let by_closer <- and_then(fuzz.bool())
+//   let (stage_in, stage_out, signatories) =
+//     if by_closer {
+//       (
+//         t.Resolved(self_pends_in, other_pends_in),
+//         t.Resolved(self_pends_out, other_pends_out),
+//         [blake2b_224(keys_in.1st)],
+//       )
+//     } else {
+//       (
+//         t.Resolved(other_pends_in, self_pends_in),
+//         t.Resolved(other_pends_out, self_pends_out),
+//         [blake2b_224(keys_in.2nd)],
+//       )
+//     }
+// 
+//   let tot_in = sum_pends(self_pends_in) + sum_pends(other_pends_in)
+//   let cid <- and_then(gen_channel_id())
+//   let min_ada_owner <- and_then(fuzz.int_between(0, 1))
+//   let input <-
+//     and_then(
+//       {
+//         let out_ref <- and_then(cardano.output_reference())
+//         let output =
+//           tx.Output(
+//             own_addr,
+//             assets.from_lovelace(tot_in + min_ada * 1_000_000)
+//               |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//             InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
+//             None,
+//           )
+//         fuzz.constant(tx.Input(out_ref, output))
+//       },
+//     )
+// 
+//   let tot_out = sum_pends(self_pends_out) + sum_pends(other_pends_out)
+//   let output =
+//     tx.Output(
+//       own_addr,
+//       assets.from_lovelace(tot_out + min_ada * 1_000_000)
+//         |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//       InlineDatum((own_hash, keys_in, stage_out, min_ada, min_ada_owner)),
+//       None,
+//     )
+//   let tx = Tx([input], [output], signatories, validity_range, mempty_mints)
+//   fuzz.constant((tx, by_closer, drop_old, secrets))
+// }
+// 
+// pub fn gen_free_steps_in_resolved_stage(
+//   own_hash: ScriptHash,
+//   max_chqs: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+//   let validity_range <- and_then(gen_validity_range())
+//   let own_addr <-
+//     and_then(cardano.address_with_payment_credential(Script(own_hash)))
+//   let txs_with_params <-
+//     and_then(
+//       fuzz_contrib.traverse_list(
+//         list.range(1, n_steps),
+//         fn(_) {
+//           gen_free_step_in_resolved_stage(own_addr, max_chqs, validity_range)
+//         },
+//       ),
+//     )
+//   let tx =
+//     txs_with_params
+//       |> list.map(fn((t, _, _, _)) { t })
+//       |> list.reduce(mempty_tx, tx_mappend)
+//   let transaction = tx |> tx_to_transaction(own_hash)
+//   let redeemer =
+//     (
+//       None,
+//       txs_with_params
+//         |> list.map(
+//             fn((_, by_closer, drop_old, secrets)) {
+//               t.Continuing(t.FreeInResolved(by_closer, secrets, drop_old))
+//             },
+//           ),
+//     )
+//   fuzz.constant((transaction, redeemer))
+// }
 
-pub fn gen_free_step_in_resolved_stage(
-  own_addr: Address,
-  max_chqs: Int,
-  validity_range: ExclusiveValidityRange,
-) -> Fuzzer<(Tx, Bool, Bool, t.Secrets)> {
-  expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
-    own_addr
-  expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
-
-  // The situation in respond is fully symmetrical so we can
-  // stay agnostic who is who modulo
-  // the order of the pends in the `Resolved` stage,
-  // the `by_closer` flag in the redeemer and the signature.
-  //
-  // Ensure that the free step is meaningful:
-  // * Either include at least one sent pend which has expired
-  // * Or include at least one received pend which has not yet expired and will be resolved
-  let other_pends_in <-
-    and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
-  let other_pends_in_expired =
-    other_pends_in |> list.filter(fn(pend) { has_expired(lb, pend) })
-  let self_pends_in <-
-    and_then(
-      if other_pends_in_expired == [] {
-        gen_pends(1, max_chqs / 2, 1, max_sq_amt / 2, lb, ub)
-      } else {
-        gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub)
-      },
-    )
-
-  let secrets <-
-    and_then(
-      if other_pends_in_expired == [] {
-        gen_non_empty_secrets(self_pends_in, ub, AllowFullReduction)
-      } else {
-        gen_secrets(self_pends_in, ub, AllowFullReduction)
-      },
-    )
-  let drop_old <-
-    and_then(
-      if secrets == [] {
-        // Enforce `drop_old` if we don't execute received chqs
-        // reduction to avoid noop
-        fuzz.constant(True)
-      } else {
-        fuzz.bool()
-      },
-    )
-  let self_pends_out = reduce_pends(self_pends_in, secrets, ub)
-  let other_pends_out = do_drop_old(drop_old, other_pends_in, lb)
-
-  let keys_in <- and_then(gen_keys())
-  let by_closer <- and_then(fuzz.bool())
-  let (stage_in, stage_out, signatories) =
-    if by_closer {
-      (
-        t.Resolved(self_pends_in, other_pends_in),
-        t.Resolved(self_pends_out, other_pends_out),
-        [blake2b_224(keys_in.1st)],
-      )
-    } else {
-      (
-        t.Resolved(other_pends_in, self_pends_in),
-        t.Resolved(other_pends_out, self_pends_out),
-        [blake2b_224(keys_in.2nd)],
-      )
-    }
-
-  let tot_in = sum_pends(self_pends_in) + sum_pends(other_pends_in)
-  let cid <- and_then(gen_channel_id())
-  let min_ada_owner <- and_then(fuzz.int_between(0, 1))
-  let input <-
-    and_then(
-      {
-        let out_ref <- and_then(cardano.output_reference())
-        let output =
-          tx.Output(
-            own_addr,
-            assets.from_lovelace(tot_in + min_ada * 1_000_000)
-              |> assets.add(own_hash, token.cid_to_token(cid), 1),
-            InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
-            None,
-          )
-        fuzz.constant(tx.Input(out_ref, output))
-      },
-    )
-
-  let tot_out = sum_pends(self_pends_out) + sum_pends(other_pends_out)
-  let output =
-    tx.Output(
-      own_addr,
-      assets.from_lovelace(tot_out + min_ada * 1_000_000)
-        |> assets.add(own_hash, token.cid_to_token(cid), 1),
-      InlineDatum((own_hash, keys_in, stage_out, min_ada, min_ada_owner)),
-      None,
-    )
-  let tx = Tx([input], [output], signatories, validity_range, mempty_mints)
-  fuzz.constant((tx, by_closer, drop_old, secrets))
-}
-
-pub fn gen_free_steps_in_resolved_stage(
-  own_hash: ScriptHash,
-  max_chqs: Int,
-  n_steps: Int,
-) -> Fuzzer<(Transaction, t.MintRedeemer)> {
-  let validity_range <- and_then(gen_validity_range())
-  let own_addr <-
-    and_then(cardano.address_with_payment_credential(Script(own_hash)))
-  let txs_with_params <-
-    and_then(
-      fuzz_contrib.traverse_list(
-        list.range(1, n_steps),
-        fn(_) {
-          gen_free_step_in_resolved_stage(own_addr, max_chqs, validity_range)
-        },
-      ),
-    )
-  let tx =
-    txs_with_params
-      |> list.map(fn((t, _, _, _)) { t })
-      |> list.reduce(mempty_tx, tx_mappend)
-  let transaction = tx |> tx_to_transaction(own_hash)
-  let redeemer =
-    (
-      None,
-      txs_with_params
-        |> list.map(
-            fn((_, by_closer, drop_old, secrets)) {
-              t.Continuing(t.FreeInResolved(by_closer, secrets, drop_old))
-            },
-          ),
-    )
-  fuzz.constant((transaction, redeemer))
-}
-
-// Executed by either party in the `Resolved` stage to fully end the channel
-// by burning the token and releasing all remaining funds after reducing pends.
-pub fn gen_end_step_in_resolved_stage(
-  own_addr: Address,
-  max_chqs: Int,
-  validity_range: ExclusiveValidityRange,
-) -> Fuzzer<(Tx, t.Secrets)> {
-  expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
-    own_addr
-  expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
-
-  // Generate received pends that can be fully reduced
-  let received_pends <-
-    and_then(
-      {
-        let any_pends <-
-          and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
-        fuzz.constant(
-          any_pends |> list.filter(fn(p) { has_not_expired(ub, p) }),
-        )
-      },
-    )
-  let secrets <- and_then(gen_secrets(received_pends, ub, EnsureFullReduction))
-  // Create sent ones which are all expired
-  let sent_pends <-
-    and_then(
-      {
-        let pends <-
-          and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
-        fuzz.constant(pends |> list.filter(fn(p) { has_expired(lb, p) }))
-      },
-    )
-
-  // Ending can be only executed by min-ada owner
-  let keys_in <- and_then(gen_keys())
-  let min_ada_owner <- and_then(fuzz.int_between(0, 1))
-  let by_closer = min_ada_owner == 0
-  let stage_in =
-    if by_closer {
-      t.Resolved(received_pends, sent_pends)
-    } else {
-      t.Resolved(sent_pends, received_pends)
-    }
-
-  let tot_in = sum_pends(received_pends) + sum_pends(sent_pends)
-  let cid <- and_then(gen_channel_id())
-
-  let input <-
-    and_then(
-      {
-        let out_ref <- and_then(cardano.output_reference())
-        let output =
-          tx.Output(
-            own_addr,
-            assets.from_lovelace(tot_in + min_ada * 1_000_000)
-              |> assets.add(own_hash, token.cid_to_token(cid), 1),
-            InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
-            None,
-          )
-        fuzz.constant(tx.Input(out_ref, output))
-      },
-    )
-
-  // No continuing output (channel ends), but release funds to a payout address
-  let payout_addr <-
-    and_then(
-      if by_closer {
-        cardano.address_with_payment_credential(VerificationKey(keys_in.2nd))
-      } else {
-        cardano.address_with_payment_credential(VerificationKey(keys_in.1st))
-      },
-    )
-  let change_amt <- and_then(fuzz.int_between(1, 10_000_000))
-  let payout_output =
-    tx.Output(
-      payout_addr,
-      assets.from_lovelace(tot_in + min_ada * 1_000_000 + change_amt),
-      NoDatum,
-      None,
-    )
-
-  let signatory =
-    if by_closer {
-      blake2b_224(keys_in.1st)
-    } else {
-      blake2b_224(keys_in.2nd)
-    }
-  let tx =
-    Tx([input], [payout_output], [signatory], validity_range, mk_burn(cid))
-  fuzz.constant((tx, secrets))
-}
-
-pub fn gen_end_steps_in_resolved_stage(
-  own_hash: ScriptHash,
-  max_chqs: Int,
-  n_steps: Int,
-) -> Fuzzer<(Transaction, t.MintRedeemer)> {
-  let validity_range <- and_then(gen_validity_range())
-  let own_addr <-
-    and_then(cardano.address_with_payment_credential(Script(own_hash)))
-  let txs_with_params <-
-    and_then(
-      fuzz_contrib.traverse_list(
-        list.range(1, n_steps),
-        fn(_) {
-          gen_end_step_in_resolved_stage(own_addr, max_chqs, validity_range)
-        },
-      ),
-    )
-  let tx =
-    txs_with_params
-      |> list.map(fn((t, _)) { t })
-      |> list.reduce(mempty_tx, tx_mappend)
-  let transaction = tx |> tx_to_transaction(own_hash)
-  let redeemer =
-    (
-      None,
-      txs_with_params
-        |> list.map(fn((_, secrets)) { t.End(secrets) }),
-    )
-  fuzz.constant((transaction, redeemer))
-}
-
-pub fn gen_end_step_in_elapsed_stage(
-  own_addr: Address,
-  max_chqs: Int,
-  validity_range: ExclusiveValidityRange,
-) -> Fuzzer<(Tx, t.Secrets)> {
-  expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
-    own_addr
-  expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
-
-  // Ending can be only executed by min-ada owner
-  let min_ada_owner <- and_then(fuzz.int_between(0, 1))
-  let by_closer = min_ada_owner == 0
-
-  let (closer_pends, secrets) <-
-    and_then(
-      {
-        let any_pends <-
-          and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
-        if by_closer {
-          let pends = any_pends |> list.filter(fn(p) { has_not_expired(ub, p) })
-          let secrets <- and_then(gen_secrets(pends, ub, EnsureFullReduction))
-          fuzz.constant((pends, secrets))
-        } else {
-          let pends = any_pends |> list.filter(fn(p) { has_expired(lb, p) })
-          fuzz.constant((pends, []))
-        }
-      },
-    )
-
-  let keys_in <- and_then(gen_keys())
-  let stage_in = t.Elapsed(closer_pends)
-  let non_closer_balance <-
-    and_then(
-      if by_closer {
-        fuzz.constant(0)
-      } else {
-        fuzz.int_between(1, max_channel_amt)
-      },
-    )
-
-  let tot_in = non_closer_balance + sum_pends(closer_pends)
-  let cid <- and_then(gen_channel_id())
-  let input <-
-    and_then(
-      {
-        let out_ref <- and_then(cardano.output_reference())
-        let output =
-          tx.Output(
-            own_addr,
-            assets.from_lovelace(tot_in + min_ada * 1_000_000)
-              |> assets.add(own_hash, token.cid_to_token(cid), 1),
-            InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
-            None,
-          )
-        fuzz.constant(tx.Input(out_ref, output))
-      },
-    )
-
-  // No continuing output (channel ends), but release funds to a payout address
-  let payout_addr <-
-    and_then(
-      if by_closer {
-        cardano.address_with_payment_credential(VerificationKey(keys_in.2nd))
-      } else {
-        cardano.address_with_payment_credential(VerificationKey(keys_in.1st))
-      },
-    )
-  let change_amt <- and_then(fuzz.int_between(1, 10_000_000))
-  let payout_output =
-    tx.Output(
-      payout_addr,
-      assets.from_lovelace(tot_in + min_ada * 1_000_000 + change_amt),
-      NoDatum,
-      None,
-    )
-  let signatory =
-    if by_closer {
-      blake2b_224(keys_in.1st)
-    } else {
-      blake2b_224(keys_in.2nd)
-    }
-  let tx =
-    Tx([input], [payout_output], [signatory], validity_range, mk_burn(cid))
-  fuzz.constant((tx, secrets))
-}
-
-pub fn gen_end_steps_in_elapsed_stage(
-  own_hash: ScriptHash,
-  max_chqs: Int,
-  n_steps: Int,
-) -> Fuzzer<(Transaction, t.MintRedeemer)> {
-  let validity_range <- and_then(gen_validity_range())
-  let own_addr <-
-    and_then(cardano.address_with_payment_credential(Script(own_hash)))
-  let txs_with_params <-
-    and_then(
-      fuzz_contrib.traverse_list(
-        list.range(1, n_steps),
-        fn(_) {
-          gen_end_step_in_elapsed_stage(own_addr, max_chqs, validity_range)
-        },
-      ),
-    )
-  let tx =
-    txs_with_params
-      |> list.map(fn((t, _)) { t })
-      |> list.reduce(mempty_tx, tx_mappend)
-  let transaction = tx |> tx_to_transaction(own_hash)
-  let redeemer =
-    (
-      None,
-      txs_with_params
-        |> list.map(fn((_, secrets)) { t.End(secrets) }),
-    )
-  fuzz.constant((transaction, redeemer))
-}
-
-// * Executed by closer so he has to be min-ada owner
-// * All closer cheques have to be resolved
-// * All non-closer cheques have to be expired
-pub fn gen_end_step_in_responded_stage(
-  own_addr: Address,
-  max_chqs: Int,
-  validity_range: ExclusiveValidityRange,
-) -> Fuzzer<(Tx, t.Secrets)> {
-  expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
-    own_addr
-  expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
-
-  // Generate `Responded` stage
-  let closer_pends_in <-
-    and_then(
-      {
-        let any_pends <-
-          and_then(gen_pends(1, max_chqs / 2, 1, max_sq_amt / 2, lb, ub))
-        fuzz.constant(
-          any_pends |> list.filter(fn(p) { has_not_expired(ub, p) }),
-        )
-      },
-    )
-  let secrets <-
-    and_then(gen_non_empty_secrets(closer_pends_in, ub, EnsureFullReduction))
-
-  let non_closer_pends_in <-
-    and_then(
-      {
-        let any_pends <-
-          and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
-        fuzz.constant(any_pends |> list.filter(fn(p) { has_expired(lb, p) }))
-      },
-    )
-
-  let keys_in <- and_then(gen_keys())
-  let min_ada_owner = 0
-  let closer_balance <-
-    and_then(fuzz.int_between(sum_pends(non_closer_pends_in), max_channel_amt))
-  let stage_in =
-    t.Responded(closer_balance, closer_pends_in, non_closer_pends_in)
-  let tot_in = closer_balance + sum_pends(closer_pends_in)
-  let cid <- and_then(gen_channel_id())
-  let input <-
-    and_then(
-      {
-        let out_ref <- and_then(cardano.output_reference())
-        let output =
-          tx.Output(
-            own_addr,
-            assets.from_lovelace(tot_in + min_ada * 1_000_000)
-              |> assets.add(own_hash, token.cid_to_token(cid), 1),
-            InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
-            None,
-          )
-        fuzz.constant(tx.Input(out_ref, output))
-      },
-    )
-  // No continuing output (channel ends), but release funds to a payout address
-  let payout_addr <-
-    and_then(
-      cardano.address_with_payment_credential(VerificationKey(keys_in.1st)),
-    )
-  let change_amt <- and_then(fuzz.int_between(1, 10_000_000))
-  let payout_output =
-    tx.Output(
-      payout_addr,
-      assets.from_lovelace(tot_in + min_ada * 1_000_000 + change_amt),
-      NoDatum,
-      None,
-    )
-  let signatory = blake2b_224(keys_in.1st)
-  let tx =
-    Tx([input], [payout_output], [signatory], validity_range, mk_burn(cid))
-  fuzz.constant((tx, secrets))
-}
-
-pub fn gen_end_steps_in_responded_stage(
-  own_hash: ScriptHash,
-  max_chqs: Int,
-  n_steps: Int,
-) -> Fuzzer<(Transaction, t.MintRedeemer)> {
-  let validity_range <- and_then(gen_validity_range())
-  let own_addr <-
-    and_then(cardano.address_with_payment_credential(Script(own_hash)))
-  let txs_with_params <-
-    and_then(
-      fuzz_contrib.traverse_list(
-        list.range(1, n_steps),
-        fn(_) {
-          gen_end_step_in_responded_stage(own_addr, max_chqs, validity_range)
-        },
-      ),
-    )
-  let tx =
-    txs_with_params
-      |> list.map(fn((t, _)) { t })
-      |> list.reduce(mempty_tx, tx_mappend)
-  let transaction = tx |> tx_to_transaction(own_hash)
-  let redeemer =
-    (
-      None,
-      txs_with_params
-        |> list.map(fn((_, secrets)) { t.End(secrets) }),
-    )
-  fuzz.constant((transaction, redeemer))
-}
+// // Executed by either party in the `Resolved` stage to fully end the channel
+// // by burning the token and releasing all remaining funds after reducing pends.
+// pub fn gen_end_step_in_resolved_stage(
+//   own_addr: Address,
+//   max_chqs: Int,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets)> {
+//   expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
+//     own_addr
+//   expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
+// 
+//   // Generate received pends that can be fully reduced
+//   let received_pends <-
+//     and_then(
+//       {
+//         let any_pends <-
+//           and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
+//         fuzz.constant(
+//           any_pends |> list.filter(fn(p) { has_not_expired(ub, p) }),
+//         )
+//       },
+//     )
+//   let secrets <- and_then(gen_secrets(received_pends, ub, EnsureFullReduction))
+//   // Create sent ones which are all expired
+//   let sent_pends <-
+//     and_then(
+//       {
+//         let pends <-
+//           and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
+//         fuzz.constant(pends |> list.filter(fn(p) { has_expired(lb, p) }))
+//       },
+//     )
+// 
+//   // Ending can be only executed by min-ada owner
+//   let keys_in <- and_then(gen_keys())
+//   let min_ada_owner <- and_then(fuzz.int_between(0, 1))
+//   let by_closer = min_ada_owner == 0
+//   let stage_in =
+//     if by_closer {
+//       t.Resolved(received_pends, sent_pends)
+//     } else {
+//       t.Resolved(sent_pends, received_pends)
+//     }
+// 
+//   let tot_in = sum_pends(received_pends) + sum_pends(sent_pends)
+//   let cid <- and_then(gen_channel_id())
+// 
+//   let input <-
+//     and_then(
+//       {
+//         let out_ref <- and_then(cardano.output_reference())
+//         let output =
+//           tx.Output(
+//             own_addr,
+//             assets.from_lovelace(tot_in + min_ada * 1_000_000)
+//               |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//             InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
+//             None,
+//           )
+//         fuzz.constant(tx.Input(out_ref, output))
+//       },
+//     )
+// 
+//   // No continuing output (channel ends), but release funds to a payout address
+//   let payout_addr <-
+//     and_then(
+//       if by_closer {
+//         cardano.address_with_payment_credential(VerificationKey(keys_in.2nd))
+//       } else {
+//         cardano.address_with_payment_credential(VerificationKey(keys_in.1st))
+//       },
+//     )
+//   let change_amt <- and_then(fuzz.int_between(1, 10_000_000))
+//   let payout_output =
+//     tx.Output(
+//       payout_addr,
+//       assets.from_lovelace(tot_in + min_ada * 1_000_000 + change_amt),
+//       NoDatum,
+//       None,
+//     )
+// 
+//   let signatory =
+//     if by_closer {
+//       blake2b_224(keys_in.1st)
+//     } else {
+//       blake2b_224(keys_in.2nd)
+//     }
+//   let tx =
+//     Tx([input], [payout_output], [signatory], validity_range, mk_burn(cid))
+//   fuzz.constant((tx, secrets))
+// }
+// 
+// pub fn gen_end_steps_in_resolved_stage(
+//   own_hash: ScriptHash,
+//   max_chqs: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+//   let validity_range <- and_then(gen_validity_range())
+//   let own_addr <-
+//     and_then(cardano.address_with_payment_credential(Script(own_hash)))
+//   let txs_with_params <-
+//     and_then(
+//       fuzz_contrib.traverse_list(
+//         list.range(1, n_steps),
+//         fn(_) {
+//           gen_end_step_in_resolved_stage(own_addr, max_chqs, validity_range)
+//         },
+//       ),
+//     )
+//   let tx =
+//     txs_with_params
+//       |> list.map(fn((t, _)) { t })
+//       |> list.reduce(mempty_tx, tx_mappend)
+//   let transaction = tx |> tx_to_transaction(own_hash)
+//   let redeemer =
+//     (
+//       None,
+//       txs_with_params
+//         |> list.map(fn((_, secrets)) { t.End(secrets) }),
+//     )
+//   fuzz.constant((transaction, redeemer))
+// }
+// 
+// pub fn gen_end_step_in_elapsed_stage(
+//   own_addr: Address,
+//   max_chqs: Int,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets)> {
+//   expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
+//     own_addr
+//   expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
+// 
+//   // Ending can be only executed by min-ada owner
+//   let min_ada_owner <- and_then(fuzz.int_between(0, 1))
+//   let by_closer = min_ada_owner == 0
+// 
+//   let (closer_pends, secrets) <-
+//     and_then(
+//       {
+//         let any_pends <-
+//           and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
+//         if by_closer {
+//           let pends = any_pends |> list.filter(fn(p) { has_not_expired(ub, p) })
+//           let secrets <- and_then(gen_secrets(pends, ub, EnsureFullReduction))
+//           fuzz.constant((pends, secrets))
+//         } else {
+//           let pends = any_pends |> list.filter(fn(p) { has_expired(lb, p) })
+//           fuzz.constant((pends, []))
+//         }
+//       },
+//     )
+// 
+//   let keys_in <- and_then(gen_keys())
+//   let stage_in = t.Elapsed(closer_pends)
+//   let non_closer_balance <-
+//     and_then(
+//       if by_closer {
+//         fuzz.constant(0)
+//       } else {
+//         fuzz.int_between(1, max_channel_amt)
+//       },
+//     )
+// 
+//   let tot_in = non_closer_balance + sum_pends(closer_pends)
+//   let cid <- and_then(gen_channel_id())
+//   let input <-
+//     and_then(
+//       {
+//         let out_ref <- and_then(cardano.output_reference())
+//         let output =
+//           tx.Output(
+//             own_addr,
+//             assets.from_lovelace(tot_in + min_ada * 1_000_000)
+//               |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//             InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
+//             None,
+//           )
+//         fuzz.constant(tx.Input(out_ref, output))
+//       },
+//     )
+// 
+//   // No continuing output (channel ends), but release funds to a payout address
+//   let payout_addr <-
+//     and_then(
+//       if by_closer {
+//         cardano.address_with_payment_credential(VerificationKey(keys_in.2nd))
+//       } else {
+//         cardano.address_with_payment_credential(VerificationKey(keys_in.1st))
+//       },
+//     )
+//   let change_amt <- and_then(fuzz.int_between(1, 10_000_000))
+//   let payout_output =
+//     tx.Output(
+//       payout_addr,
+//       assets.from_lovelace(tot_in + min_ada * 1_000_000 + change_amt),
+//       NoDatum,
+//       None,
+//     )
+//   let signatory =
+//     if by_closer {
+//       blake2b_224(keys_in.1st)
+//     } else {
+//       blake2b_224(keys_in.2nd)
+//     }
+//   let tx =
+//     Tx([input], [payout_output], [signatory], validity_range, mk_burn(cid))
+//   fuzz.constant((tx, secrets))
+// }
+// 
+// pub fn gen_end_steps_in_elapsed_stage(
+//   own_hash: ScriptHash,
+//   max_chqs: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+//   let validity_range <- and_then(gen_validity_range())
+//   let own_addr <-
+//     and_then(cardano.address_with_payment_credential(Script(own_hash)))
+//   let txs_with_params <-
+//     and_then(
+//       fuzz_contrib.traverse_list(
+//         list.range(1, n_steps),
+//         fn(_) {
+//           gen_end_step_in_elapsed_stage(own_addr, max_chqs, validity_range)
+//         },
+//       ),
+//     )
+//   let tx =
+//     txs_with_params
+//       |> list.map(fn((t, _)) { t })
+//       |> list.reduce(mempty_tx, tx_mappend)
+//   let transaction = tx |> tx_to_transaction(own_hash)
+//   let redeemer =
+//     (
+//       None,
+//       txs_with_params
+//         |> list.map(fn((_, secrets)) { t.End(secrets) }),
+//     )
+//   fuzz.constant((transaction, redeemer))
+// }
+// 
+// // * Executed by closer so he has to be min-ada owner
+// // * All closer cheques have to be resolved
+// // * All non-closer cheques have to be expired
+// pub fn gen_end_step_in_responded_stage(
+//   own_addr: Address,
+//   max_chqs: Int,
+//   validity_range: ExclusiveValidityRange,
+// ) -> Fuzzer<(Tx, t.Secrets)> {
+//   expect Address { payment_credential: Script(own_hash), stake_credential: _ } =
+//     own_addr
+//   expect ExclusiveValidityRange { lb: Some(lb), ub: Some(ub) } = validity_range
+// 
+//   // Generate `Responded` stage
+//   let closer_pends_in <-
+//     and_then(
+//       {
+//         let any_pends <-
+//           and_then(gen_pends(1, max_chqs / 2, 1, max_sq_amt / 2, lb, ub))
+//         fuzz.constant(
+//           any_pends |> list.filter(fn(p) { has_not_expired(ub, p) }),
+//         )
+//       },
+//     )
+//   let secrets <-
+//     and_then(gen_non_empty_secrets(closer_pends_in, ub, EnsureFullReduction))
+// 
+//   let non_closer_pends_in <-
+//     and_then(
+//       {
+//         let any_pends <-
+//           and_then(gen_pends(0, max_chqs / 2, 0, max_sq_amt / 2, lb, ub))
+//         fuzz.constant(any_pends |> list.filter(fn(p) { has_expired(lb, p) }))
+//       },
+//     )
+// 
+//   let keys_in <- and_then(gen_keys())
+//   let min_ada_owner = 0
+//   let closer_balance <-
+//     and_then(fuzz.int_between(sum_pends(non_closer_pends_in), max_channel_amt))
+//   let stage_in =
+//     t.Responded(closer_balance, closer_pends_in, non_closer_pends_in)
+//   let tot_in = closer_balance + sum_pends(closer_pends_in)
+//   let cid <- and_then(gen_channel_id())
+//   let input <-
+//     and_then(
+//       {
+//         let out_ref <- and_then(cardano.output_reference())
+//         let output =
+//           tx.Output(
+//             own_addr,
+//             assets.from_lovelace(tot_in + min_ada * 1_000_000)
+//               |> assets.add(own_hash, token.cid_to_token(cid), 1),
+//             InlineDatum((own_hash, keys_in, stage_in, min_ada, min_ada_owner)),
+//             None,
+//           )
+//         fuzz.constant(tx.Input(out_ref, output))
+//       },
+//     )
+//   // No continuing output (channel ends), but release funds to a payout address
+//   let payout_addr <-
+//     and_then(
+//       cardano.address_with_payment_credential(VerificationKey(keys_in.1st)),
+//     )
+//   let change_amt <- and_then(fuzz.int_between(1, 10_000_000))
+//   let payout_output =
+//     tx.Output(
+//       payout_addr,
+//       assets.from_lovelace(tot_in + min_ada * 1_000_000 + change_amt),
+//       NoDatum,
+//       None,
+//     )
+//   let signatory = blake2b_224(keys_in.1st)
+//   let tx =
+//     Tx([input], [payout_output], [signatory], validity_range, mk_burn(cid))
+//   fuzz.constant((tx, secrets))
+// }
+// 
+// pub fn gen_end_steps_in_responded_stage(
+//   own_hash: ScriptHash,
+//   max_chqs: Int,
+//   n_steps: Int,
+// ) -> Fuzzer<(Transaction, t.MintRedeemer)> {
+//   let validity_range <- and_then(gen_validity_range())
+//   let own_addr <-
+//     and_then(cardano.address_with_payment_credential(Script(own_hash)))
+//   let txs_with_params <-
+//     and_then(
+//       fuzz_contrib.traverse_list(
+//         list.range(1, n_steps),
+//         fn(_) {
+//           gen_end_step_in_responded_stage(own_addr, max_chqs, validity_range)
+//         },
+//       ),
+//     )
+//   let tx =
+//     txs_with_params
+//       |> list.map(fn((t, _)) { t })
+//       |> list.reduce(mempty_tx, tx_mappend)
+//   let transaction = tx |> tx_to_transaction(own_hash)
+//   let redeemer =
+//     (
+//       None,
+//       txs_with_params
+//         |> list.map(fn((_, secrets)) { t.End(secrets) }),
+//     )
+//   fuzz.constant((transaction, redeemer))
+// }

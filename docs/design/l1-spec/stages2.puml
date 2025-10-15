@@ -1,0 +1,90 @@
+@startuml
+
+state "<b>Opened</b>" as Opened
+Opened: * ""NonOpenerAmount""
+Opened: * ""Snapshot""
+Opened: * ""Period""
+
+state "<b>Closed</b>" as Closed
+Closed: * CloserAmount
+Closed: * ""Squash""
+Closed: * ""Timeout""
+Closed: * ""Pend""
+
+state "<b>Resolved</b>" as Resolved
+Resolved: * ""NonResolverAmount""
+Resolved: * ""Pend""
+Resolved: * ""Pend""
+
+[*] --> Opened : <b>open</b>\nby opener
+note on link
+  * In all stages we keep a tuple of verification keys.
+  * The initial order of keys is `(opener, non-opener)`.
+  * The `NonOpenerAmount` reflects the non-opener balance.
+  * The `Total - NonOpenerAmount` is the opener balance.
+  * The above balances does not include snapshot liabilities.
+end note
+Opened --u-> Opened : ""<b>add</b>""
+Opened --> Closed : <b>close</b>\nby closer
+note on link
+  * Doesn't release assets.
+  * The order of keys should be set to `(closer, non-closer)`
+  * Optionally delivers the newest snapshot.
+  * The `CloserAmount` reflects the closer balance after:
+      - Incorporating differences from the snapshot's squashes.
+      - Adding up all the unlocked cheques from the receipt.
+      - Ignoring non fully confirmed closer liabilities.
+end note
+Closed --u-> Closed : <b>free</b>\nby closer
+
+Closed --> Resolved: <b>respond</b>\nby non-closer
+note on link
+  * Keys are swapped - non-closer is the resolver.
+  * Non-closer provides a possible squash update.
+  * The final squash is used to adjust
+    the `CloserAmount`.
+  * Provided receipt is the source of the 
+    non-closer `Pend's`.
+  * Releases non-closer account assets.
+  * The left over should cover all the liabilities
+    plus the `CloserAmount`.
+end note
+
+Closed --> Resolved: <b>elapse</b>\nby closer
+note on link
+  * The key's order is preserved as the closer
+    is becoming the resolver.
+  * Non-closer `Pend`'s is empty. His receipt
+    was not delivered on time.
+  * Remaining squash is approached as the final
+    one and discarded as it was already
+    accounted for.
+  * Possibly unlocks some pending cheques and
+    includes them into the `CloserAmount`.
+  * Releases the withdrawal amount leaving
+    coverage for `NonCloserAmount` and his
+    pending liabilities.
+end note
+
+Resolved --u-> Resolved : <b>free</b>
+Resolved --> [*] : <b>end</b>\nby min-ada-owner
+
+Closed --> [*] : <b>end</b>\nby min-ada-owner
+note on link
+  * When executed by closer then it combines
+    `elapse` with subsequent `end` logic.
+  * When executed by non-closer then it combines
+    `resolve` with `end` logic.
+end note
+
+@enduml
+
+
+// pub type CStep {
+//   Add(Option<Signed<Snapshot>>)
+//   Close(Receipt)
+//   Respond(Receipt, DropOld)
+//   Resolve(Secrets, DropOld)
+//   Elapse(Secrets)
+//   Free(Secrets, DropOld)
+// }
