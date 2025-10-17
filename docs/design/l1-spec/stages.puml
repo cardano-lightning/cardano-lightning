@@ -6,20 +6,13 @@ Opened: * ""Snapshot""
 Opened: * ""Period""
 
 state "<b>Closed</b>" as Closed
-Closed: * ""CloserAmount""
+Closed: * CloserAmount
 Closed: * ""Squash""
 Closed: * ""Timeout""
 Closed: * ""Pend""
 
-state "<b>Responded</b>" as Responded
-Responded: * ""CloserAmount""
-Responded: * ""Pend""
-Responded: * ""Pend""
-
-state "<b>Elapsed</b>" as Elapsed
-Elapsed: * ""Pend""
-
 state "<b>Resolved</b>" as Resolved
+Resolved: * ""NonResolverAmount""
 Resolved: * ""Pend""
 Resolved: * ""Pend""
 
@@ -29,85 +22,63 @@ note on link
   * The initial order of keys is `(opener, non-opener)`.
   * The `NonOpenerAmount` reflects the non-opener balance.
   * The `Total - NonOpenerAmount` is the opener balance.
+  * The above balances does not include snapshot liabilities.
 end note
 Opened --u-> Opened : ""<b>add</b>""
 Opened --> Closed : <b>close</b>\nby closer
 note on link
   * Doesn't release assets.
-  * The order of keys changes to `(closer, non-closer)`.
+  * The order of keys should be set to `(closer, non-closer)`
   * Optionally delivers the newest snapshot.
   * The `CloserAmount` reflects the closer balance after:
-      - incorporating differences from the snapshot's squashes
-      - adding up all the reduced cheques provided in this step's Receipt
+      - Incorporating differences from the snapshot's squashes.
+      - Adding up all the unlocked cheques from the receipt.
+      - Ignoring non fully confirmed closer liabilities.
 end note
 Closed --u-> Closed : <b>free</b>\nby closer
-Closed --d-> Responded : <b>respond</b>\nby non-closer
+
+Closed --> Resolved: <b>respond</b>\nby non-closer
 note on link
+  * Keys are swapped - non-closer is the resolver.
+  * Non-closer provides a possible squash update.
+  * The final squash is used to adjust
+    the `CloserAmount`.
+  * Provided receipt is the source of the 
+    non-closer `Pend's`.
   * Releases non-closer account assets.
-  * The left over should cover the closer
-    account and potential liabilities of the
-    non-closer which are stored in their `Pend`.
-  * The `Pend`s are stored in order corresponding
-    to the keys.
-end note
-Closed --> Elapsed : <b>elapse</b>\nby closer
-note on link
-  * Releases account assets.
-  * For simplicity we disallow the closer to provide
-    cheques owned by the non-closer.
-  * The left over should cover just the
-    non-closer account as any extra liabilities
-    of the closer were ignored.
+  * The left over should cover all the liabilities
+    plus the `CloserAmount`.
 end note
 
-Closed --> Resolved: <b>resolve-closed</b>
+Closed --> Resolved: <b>elapse</b>\nby closer
 note on link
-  * When executed by closer combines
-    `elapse` and `resolve`. Only
-    allowed when `NonCloserAmount == 0`
-  * When executed by non-closer combines
-    `respond` with `resolve`.
-end note
-
-Responded --u-> Responded : <b>free</b>\nby non-closer
-Responded --d-> Resolved : <b>resolve</b>\nby closer
-note on link
-  * Releases account assets leaving
-    coverage for liabilities.
-end note
-Responded --> [*] : <b>end</b>
-note on link
-  * When executed by non-closer
-    then the `CloserAmount` has
-    to be `0`.
-end note
-
-Elapsed --u-> Elapsed : <b>free</b>\nby closer
-Elapsed --d-> Resolved : <b>resolve</b>\nby non-closer
-note on link
-  * Releases account assets still
-    covering remaining liabilities.
-  * Non-closer `Pend` is empty.
-    It was discarded (as a "penalty")
-    during the previous `elapse`.
-end note
-Elapsed --d-> [*] : <b>end</b>\nby min-ada-owner
-note on link
-  * When executed by non-closer
-    releases account assets.
-  * When executed by closer ensures
-    empty non-closer balance.
+  * The key's order is preserved as the closer
+    is becoming the resolver.
+  * Non-closer `Pend`'s is empty. His receipt
+    was not delivered on time.
+  * Remaining squash is approached as the final
+    one and discarded as it was already
+    accounted for.
+  * Possibly unlocks some pending cheques and
+    includes them into the `CloserAmount`.
+  * Releases the withdrawal amount leaving
+    coverage for `NonCloserAmount` and his
+    pending liabilities.
 end note
 
 Resolved --u-> Resolved : <b>free</b>
 Resolved --> [*] : <b>end</b>\nby min-ada-owner
 
-Closed --> [*] : <b>end</b>\nby min-ada-owner
+Closed --> [*] : <b>respond-end</b>\nby non-closer if min-ada-owner
 note on link
-  * When executed by closer then it combines
-    `elapse` with subsequent `end` logic.
-  * When executed by non-closer then it combines
-    `respond` with `end` logic.
+  * closer balance has to be null
+  * all the pends have to be freed
+end note
+
+Closed --> [*] : <b>elapse-end</b>\nby closer if min-ada-owner
+note on link
+  * non-closer balance has to be null
+  * all the closer_pends have to be freed
 end note
 
 @enduml
