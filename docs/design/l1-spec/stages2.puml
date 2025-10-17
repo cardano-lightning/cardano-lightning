@@ -69,12 +69,16 @@ end note
 Resolved --u-> Resolved : <b>free</b>
 Resolved --> [*] : <b>end</b>\nby min-ada-owner
 
-Closed --> [*] : <b>end</b>\nby min-ada-owner
+Closed --> [*] : <b>respond-end</b>\nby non-closer if min-ada-owner
 note on link
-  * When executed by closer then it combines
-    `elapse` with subsequent `end` logic.
-  * When executed by non-closer then it combines
-    `resolve` with `end` logic.
+  * closer balance has to be null
+  * all the pends have to be freed
+end note
+
+Closed --> [*] : <b>elapse-end</b>\nby closer if min-ada-owner
+note on link
+  * non-closer balance has to be null
+  * all the closer_pends have to be freed
 end note
 
 @enduml
