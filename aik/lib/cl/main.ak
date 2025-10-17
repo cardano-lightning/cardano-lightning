@@ -9,8 +9,8 @@ use cardano/transaction.{
 use cl/channel
 use cl/prelude.{Amount, PosixMilliseconds}
 use cl/step.{
-  do_add, do_close, do_elapse, do_end, do_free_in_closed, do_free_in_resolved,
-  do_respond, is_vk_signer,
+  do_add, do_close, do_elapse, do_elapse_end, do_end_resolved, do_free_in_closed,
+  do_free_in_resolved, do_respond, do_respond_end, is_vk_signer,
 }
 use cl/token
 use cl/types as t
@@ -77,7 +77,7 @@ pub fn reduce(
   signers: List<VerificationKeyHash>,
   validity_range: Interval<PosixMilliseconds>,
   inputs: List<Input>,
-  steps: List<t.NStep>,
+  steps: List<t.Step>,
   n_burn: Int,
   non_new_channel_outs: List<Output>,
 ) -> Bool {
@@ -164,13 +164,11 @@ pub fn reduce(
                         keys_out,
                         stage_out,
                       )
-                    t.FreeInClosed { secrets, drop_old } ->
+                    t.FreeInClosed(secrets) ->
                       do_free_in_closed(
                         signers,
-                        exclusive_lower_bound(validity_range),
                         exclusive_upper_bound(validity_range),
                         secrets,
-                        drop_old,
                         tot_in,
                         keys_in,
                         stage_in,
@@ -178,12 +176,12 @@ pub fn reduce(
                         keys_out,
                         stage_out,
                       )
-                    t.FreeInResolved { by_closer, secrets, drop_old } ->
+                    t.FreeInResolved { by_resolver, secrets, drop_old } ->
                       do_free_in_resolved(
                         signers,
                         exclusive_lower_bound(validity_range),
                         exclusive_upper_bound(validity_range),
-                        by_closer,
+                        by_resolver,
                         secrets,
                         drop_old,
                         tot_in,
@@ -193,19 +191,6 @@ pub fn reduce(
                         keys_out,
                         stage_out,
                       )
-                    // t.Resolve { secrets, drop_old } ->
-                    //   do_resolve(
-                    //     signers,
-                    //     exclusive_lower_bound(validity_range),
-                    //     exclusive_upper_bound(validity_range),
-                    //     secrets,
-                    //     drop_old,
-                    //     keys_in,
-                    //     stage_in,
-                    //     tot_out,
-                    //     keys_out,
-                    //     stage_out,
-                    //   )
                     t.Respond { receipt, drop_old } ->
                       do_respond(
                         cid,
@@ -214,6 +199,7 @@ pub fn reduce(
                         exclusive_upper_bound(validity_range),
                         receipt,
                         drop_old,
+                        tot_in,
                         keys_in,
                         stage_in,
                         tot_out,
@@ -231,22 +217,50 @@ pub fn reduce(
                   rest_outputs,
                 )
               }
-              t.End(secrets) -> {
+              t.End(step) -> {
                 let min_ada_owner_key =
                   when min_ada_owner_in is {
                     0 -> keys_in.1st
                     _ -> keys_in.2nd
                   }
                 expect is_vk_signer(min_ada_owner_key, signers)
-                expect
-                  do_end(
-                    min_ada_owner_in,
-                    secrets,
-                    exclusive_lower_bound(validity_range),
-                    exclusive_upper_bound(validity_range),
-                    tot_in,
-                    stage_in,
-                  )
+                when step is {
+                  t.ElapseEnd(secrets) -> {
+                    expect
+                      do_elapse_end(
+                        min_ada_owner_in,
+                        secrets,
+                        exclusive_lower_bound(validity_range),
+                        exclusive_upper_bound(validity_range),
+                        tot_in,
+                        stage_in,
+                      )
+                  }
+                  t.EndResolved(secrets) -> {
+                    expect
+                      do_end_resolved(
+                        min_ada_owner_in,
+                        secrets,
+                        exclusive_lower_bound(validity_range),
+                        exclusive_upper_bound(validity_range),
+                        stage_in,
+                      )
+                  }
+                  t.RespondEnd(receipt) -> {
+                    expect
+                      do_respond_end(
+                        cid,
+                        min_ada_owner_in,
+                        keys_in,
+                        receipt,
+                        exclusive_lower_bound(validity_range),
+                        exclusive_upper_bound(validity_range),
+                        tot_in,
+                        stage_in,
+                      )
+                  }
+                }
+
                 trace @"Channel ended"
                 reduce(
                   own_hash,

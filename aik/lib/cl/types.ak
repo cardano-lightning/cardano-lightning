@@ -90,26 +90,31 @@ pub type SpendRedeemer {
 pub type Secrets =
   List<(Index, HtlcSecret)>
 
+pub type MintRedeemer =
+  (Option<OutputReference>, List<Step>)
+
+pub type Step {
+  Continuing(ContinuingStep)
+  End(EndStep)
+}
+
+pub type EndStep {
+  ElapseEnd(Secrets)
+  EndResolved(Secrets)
+  RespondEnd(Receipt)
+}
+
 // This is a slight optimization to avoid
 // iteration over `sent` cheques to
 // release expired ones.
-// This flag is just ignored by some steps.
 pub type DropOld =
   Bool
 
-pub type MintRedeemer =
-  (Option<OutputReference>, List<NStep>)
-
-pub type NStep {
-  Continuing(CStep)
-  End(Secrets)
-}
-
-pub type CStep {
+pub type ContinuingStep {
   Add { by_opener: Bool, snapshot: Option<Signed<Snapshot>> }
   Close { by_opener: Bool, receipt: Receipt }
   Elapse(Secrets)
-  FreeInClosed { secrets: Secrets, drop_old: DropOld }
-  FreeInResolved { by_closer: Bool, secrets: Secrets, drop_old: DropOld }
+  FreeInClosed(Secrets)
+  FreeInResolved { by_resolver: Bool, secrets: Secrets, drop_old: DropOld }
   Respond { receipt: Receipt, drop_old: DropOld }
 }
