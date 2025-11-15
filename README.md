@@ -1,5 +1,7 @@
 # cardano-lightning
 
+Core protocol design (L1 and L2) together with smart contracts.
+
 ## Why Lightning?
 
 - Secure: The integrity of the L1
@@ -7,9 +9,6 @@
 - Highly scalable
 
 ## Repo overview
-
-Currently we use monorepo approach for creating the preliminary specification
-and POC implementation. Later on we will split this into separate repositories.
 
 This repo uses nix flakes.
 

@@ -5,11 +5,6 @@ author:
   - "@paluh"
 ---
 
-Questions (paluh)
-
-> Because of min ADA constraint Respond.Con.9: `tot_out` is greater or equal to
-> `amt0_out + sum(pend1)`
-
 ## Intro
 
 Cardano Lightning (CL) is p2p payment solution inspired by Bitcoin Lightning
@@ -20,8 +15,8 @@ for:
 - Scalability
 
 Users of the network maintain two party channels, through which they can send
-and receive funds. We may refer to the participants of the channel as the party
-and counter party.
+and receive funds. We may refer to the participants of the channel as partners
+and call them individually the party and counter party.
 
 A user can perform various high level actions, including:
 
@@ -31,8 +26,7 @@ A user can perform various high level actions, including:
 Signposting:
 
 - For gentler intro to CL, check out the
-  [blog](https://cardano-lightning.org/blog) and the
-  [minimal lifecycle ADR](../ards/minimal-lifecycle.md) for a general
+  [blog](https://cardano-lightning.org/blog).
   introduction lifecycle of the channel.
 - For terms, see the [glossary](../glossary.md)
 - For explanations on how to read this spec, see the appendix.
@@ -63,7 +57,6 @@ The stages of a channel are:
 
 - `Opened`
 - `Closed`
-- `Responded`
 - `Resolved`
 
 The steps that progress from one stage to the next are follows:
@@ -72,12 +65,12 @@ The steps that progress from one stage to the next are follows:
   partner's account.
 - `close : Opened -> Closed` : A partner submits their receipt of their L2
   transacting. The partner should no longer accept cheques on the L2.
-- `respond : Closed -> Responded` : The non-closer partner submits their
+- `respond : Closed -> Resolved` : The non-closer partner submits their
   receipt. They release the funds they are owed, and not still locked.
-- `resolve : Responded -> Resolve` : The closer releases the funds they are
-  owed, and not still locked.
+  The closer funds are not yet released.
 - `elapse : Closed -> Resolved` : A closer can release their funds, up to
   pending locked cheques, if the `respond` is not sufficiently punctual.
+  The non-closer funds are not yet released.
 
 Steps that are fixed to a stage
 
@@ -85,16 +78,15 @@ Steps that are fixed to a stage
 - `free : Closed -> Closed` : Closer provides evidence that conditions We'd
   still need to know the latest are met to free some locked cheques. The value
   is added to their account but not released
-- `free : Responded -> Responded` : Non-closer provides evidence that conditions
-  are met to free some locked cheques. Funds are immediately released.
 - `free : Resolved -> Resolved` : Either partner frees locked cheques, and funds
-  are immediately released.
+  are immediately released. non-resolver during initial `free` is forced to withdraw
+  his balance as well.
 
-Unstaging steps
+Unstaging steps - those can be only executed by the min-ADA owner:
 
-- `end : Responded -> [*]` : A `resolve` but the output has no locked cheques.
 - `end : Resolved -> [*]` : A `free` but the output has no locked cheques.
-  locked cheques.
+- `elapse-end: Closed -> [*]` : Composition of `elapse` and `end`.
+- `respond-end: Closed -> [*]` : Composition of the `respond` and `end`.
 
 ### Constants
 
@@ -133,43 +125,61 @@ fn mk_cid(seed, idx) {
 }
 ```
 
--
+#### Token control
+
+Channel tokens are controlled by the script throughout the channel lifecycle. They are never released and burned at the end.
+Bold tokens on the other hand are freely released and can be present outside of the channels UTxO on the chain.
+
+### Timeouts
+
+#### Expiration and validity proofs
+
+Across the CL protocol we deal with timeouts. We consider the timeout itself to be included in the validity period meaning when a given timeout is greater than or equal to the "current time" (indicated by tx validity range) we consider that validity period to be still ongoing.
+On the ledger transaction lower bound is exclusive and a finite upper bound is always inclusive: `(lb, ub]`. Given that we prove:
+
+* Expiration through `timeout <= lb`:
+  * We know that `lb` has already past.
+  * So we can use equality in here.
+
+* Non-expiration `timeout >= ub`:
+  * `ub` is possibly "now".
+  * `timeout >= ub` is OK as timeout itself belongs to the interval.
+
+#### Cheques
+
+There is a subtle incentive game involved when partners prove the timeout. If a partner wants to free some of his liabilities he should prove their expiration.
+We also require non-expiration proof when unlocking the other partner liabilities. We can not tolerate expiration here as this would break the security of the payment routing and HTLC composition.
+
+#### Response
+
+The protocol is polite in the context of response step timeout and allows to execute it even after the timeout.
 
 ### Data
 
 The following sections are collections of data definitions that are underpin
 communication and integrity both within the L2 and from the L2 to the L1.
 
-Relevant data types have an associated `verify` function employed withing the
+Relevant data types have an associated `verify` function employed within the
 script that verifies that the data is well-formed.
 
 #### Cheques
 
-Cheques are a vehicle via which funds are sent from one partner to the other. As
+Cheques a vehicle through which funds are sent from one partner to the other. As
 such they must be understood on the L1.
 
-Cheques may be "normal" or "locked". Normal cheques, provided they are
-accompanied with a valid signature, are indicate the sender owes the receiver
-the indicated amount of funds. A locked cheque indicates that the sender owes
-the receiver funds subject to extra conditions.
-
-A "hash time locked contract" cheque (HTLC) has a lock in the form of a hash. To
-be redeemable, the receiver must provide the "secret" that hashes to the lock.
+Cheque indicates that the sender owes the receiver funds subject to extra conditions.
+A "hash time lock" cheque (HTLC) is a lock which consists of the elements: a timeout and a hash lock.
+To be redeemable, the receiver must provide the "secret" that hashes to the lock before the timeout.
 
 ```aiken
 type Index = Int
 type Amount = Int
 type Timeout = Int // Posix Timestamp
 
-type Normal = (Index, Amount)
-
 type Hash32 = ByteArray // 32 bytes
 
 type HashLock {
-  Blake2b256Lock(Hash32)
   Sha2256Lock(Hash32)
-  Sha3256Lock(Hash32)
-}
 
 pub type Htlc = (Index, Amount, Timeout, HashLock)
 
