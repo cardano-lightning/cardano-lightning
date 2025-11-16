@@ -1948,18 +1948,32 @@ pub fn gen_unlocked_chqs(
   idxs: SqIdxInfo,
   total_amt: Amount,
   ub: PosixMilliseconds,
+  max_chqs: Int,
 ) -> Fuzzer<List<t.Cheque>> {
   let (idxs, index) <- and_then(pick_idx(idxs))
-  let amount <- and_then(fuzz.int_between(1, total_amt))
   let delta <- and_then(fuzz.int_between(1, max_period))
   let timeout = ub + delta
-  let chq =
-    t.Unlocked { index, timeout, secret: htlc_secret, amount, signature }
-  if amount == total_amt {
+  if max_chqs == 1 {
+    let chq =
+      t.Unlocked {
+        index,
+        timeout,
+        secret: htlc_secret,
+        amount: total_amt,
+        signature,
+      }
     fuzz.constant([chq])
   } else {
-    let rest_chqs <- and_then(gen_unlocked_chqs(idxs, total_amt - amount, ub))
-    fuzz.constant(list.push(rest_chqs, chq))
+    let amount <- and_then(fuzz.int_between(1, total_amt))
+    let chq =
+      t.Unlocked { index, timeout, secret: htlc_secret, amount, signature }
+    if amount == total_amt {
+      fuzz.constant([chq])
+    } else {
+      let rest_chqs <-
+        and_then(gen_unlocked_chqs(idxs, total_amt - amount, ub, max_chqs - 1))
+      fuzz.constant(list.push(rest_chqs, chq))
+    }
   }
 }
 
@@ -1987,7 +2001,11 @@ pub fn gen_respond_end_step(
     and_then(
       {
         let any_pends <- and_then(gen_pends(0, max_chqs, 0, max_sq_amt, lb, ub))
-        fuzz.constant(any_pends |> list.filter(fn(p) { has_expired(lb, p) }))
+        fuzz.constant(
+          any_pends
+            |> list.filter(fn(p) { has_expired(lb, p) })
+            |> list.take(max_chqs),
+        )
       },
     )
   let closer_amt <- and_then(fuzz.int_between(0, max_channel_amt / 2))
@@ -2056,7 +2074,9 @@ pub fn gen_respond_end_step(
   let chqs_amt = closer_amt - sq_diff
   // Now let's generate cheques which cover the remaining amount
   let receipt_cheques <-
-    and_then(gen_unlocked_chqs(SqIdxInfo(sq.exclude, sq.index), chqs_amt, ub))
+    and_then(
+      gen_unlocked_chqs(SqIdxInfo(sq.exclude, sq.index), chqs_amt, ub, max_chqs),
+    )
   let redeemer = t.RespondEnd((receipt_sn, receipt_cheques))
 
   // * Generate payout output

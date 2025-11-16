@@ -28,7 +28,41 @@
         pkgs,
         system,
         ...
-      }: {
+      }:
+      let
+        devShell = {
+          name = "cardano-lightning";
+          nativeBuildInputs = [
+            config.treefmt.build.wrapper
+          ];
+          shellHook = ''
+            ${config.pre-commit.installationScript}
+            echo 1>&2 "Welcome to the development shell!"
+          '';
+
+          packages = [
+            inputs'.aiken.packages.aiken
+          ];
+        };
+        devShellExtra =
+          devShell
+          // {
+            name = "cardano-lightning-with-extras";
+            shellHook = ''
+              ${config.pre-commit.installationScript}
+              echo 1>&2 "Welcome to the development shell with some extras!"
+            '';
+            packages =
+              devShell.packages
+              ++ [
+                pkgs.nodePackages.mermaid-cli
+                pkgs.plantuml
+                pkgs.python3
+                pkgs.python3Packages.toml
+                # inputs.capkgs.packages.${system}.cardano-cli-input-output-hk-cardano-node-10-2-1-52b708f
+              ];
+          };
+      in {
         treefmt = {
           projectRootFile = "flake.nix";
           flakeFormatter = true;
@@ -53,38 +87,9 @@
             entry = "${inputs'.aiken.packages.aiken}/bin/aiken fmt ./aik";
           };
         };
-        # NOTE: You can also use `config.pre-commit.devShell`
-        devShells.default = pkgs.mkShell {
-          name = "cardano-lightning";
-          nativeBuildInputs = [
-            config.treefmt.build.wrapper
-          ];
-          shellHook = ''
-            ${config.pre-commit.installationScript}
-            echo 1>&2 "Welcome to the development shell!"
-
-            # FIXME: This should be packaged as a tool available in the shell
-            export VENV=./aik/test-vectors/.venv
-            # create dir if not exists
-            if [ ! -d "$VENV" ]; then
-              python3 -m venv $VENV
-            fi
-            source ./$VENV/bin/activate
-            pip install -r ./aik/test-vectors/requirements.txt
-          '';
-
-          postShellHook = ''
-            ln -sf ${pkgs.python311.sitePackages}/* ./.venv/lib/python311.12/site-packages
-          '';
-
-          # Let's keep this "path discovery techinque" here for refernece:
-          # (builtins.trace (builtins.attrNames inputs.cardano-addresses.packages.${system}) inputs.cardano-cli.packages)
-          packages = [
-            inputs'.aiken.packages.aiken
-            pkgs.python311Packages.frozenlist
-            pkgs.python311
-            pkgs.nodePackages.mermaid-cli
-          ];
+        devShells = {
+          default = pkgs.mkShell devShell;
+          extras = pkgs.mkShell devShellExtra;
         };
       };
       flake = {};

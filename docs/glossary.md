@@ -37,6 +37,10 @@ the stage.
 The preferred term for an integer representing an amount of funds. It is
 preferred over alternatives such as `value` and `quantity`.
 
+### capacity
+
+The maximum number of cheques that can be accepted during the settlement steps. This value can significantly affect the on-chain batching limits from both performance and tx-size perspective.
+
 ### channel
 
 The fundamental link between two [participants](#participant) in the CL network.

@@ -1,3 +1,12 @@
+---
+title: Thread token
+status: proposed
+author: "@paluh"
+date: 2024-08-18
+tags:
+  - thread token
+---
+
 Status: Draft; Early stage; Loose notes
 
 Description: If and how channels should be identified on the chain.
@@ -29,8 +38,7 @@ order to use and verify it.
 
 We should probably consider at least the following types of clients:
 
-- Clients which have acceess to the full blockchain history or an interesting
-  subset of it.
+- Clients which have access to the full blockchain history.
 
 - Clients which have access to some certified verification source like Mithril
 
@@ -51,6 +59,7 @@ contract thread. In order to operate safely:
 
 - Either requires full access an indexer which provides all the intermediate
   transactions and requires quering Mithril aggregator for all the transactions.
+
 - Or requires a trusted indexer so cardano node as well.
 
 ##### 2. Identifier at the datum level
@@ -91,11 +100,12 @@ it is minted using unique and safe policy. Proving:
 
 - It is probably more probable that some form of incentivized attack can be
   performed when we imagine payment operators - some security attacks can depend
-  on confusion and weakness of the sofware behind it.
+  on confusion and weakness of the software behind it.
 
 ## Do we need it?
 
-Clearly not. We could avoid any identification
+Clearly not. We could avoid any extra identifier on the L1 and rely on the
+initial UTxO.
 
 ## Main objectives
 

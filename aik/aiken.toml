@@ -4,12 +4,6 @@ compiler = "v1.1.17"
 plutus = "v3"
 license = "Apache-2.0"
 description = "Aiken contracts for project 'cardano-lightning/cl'"
-
-[repository]
-user = "cardano-lightning"
-project = "cl"
-platform = "github"
-
 [[dependencies]]
 name = "aiken-lang/stdlib"
 version = "v2"
@@ -20,4 +14,13 @@ name = "aiken-lang/fuzz"
 version = "v2.1.1"
 source = "github"
 
-[config]
+[repository]
+user = "cardano-lightning"
+project = "cl"
+platform = "github"
+
+[config.default]
+max_cheques = 5
+
+[config.testing]
+max_cheques = 5

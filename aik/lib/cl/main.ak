@@ -85,7 +85,8 @@ pub fn reduce(
     [input, ..rest_inputs] -> {
       let Output { address: address_in, value: value_in, datum: datum_in, .. } =
         input.output
-      if address_in.payment_credential == Script(own_hash) {
+      expect Script(script_hash) = address_in.payment_credential
+      if script_hash == own_hash {
         expect InlineDatum(raw_in) = datum_in
         trace @"datum": raw_in
         expect (_, keys_in, stage_in, min_ada_in, min_ada_owner_in): t.Datum =

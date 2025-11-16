@@ -1,0 +1,12 @@
+{
+    "bench_new_channels": 40,
+    "bench_add_steps": 40,
+    "bench_close_steps": 24,
+    "bench_respond_steps": 25,
+    "bench_elapse_steps": 40,
+    "bench_free_in_closed_steps": 36,
+    "bench_free_in_resolved_steps": 38,
+    "bench_end_resolved_steps": 40,
+    "bench_elapse_end_steps": 40,
+    "bench_respond_end_steps": 22
+}

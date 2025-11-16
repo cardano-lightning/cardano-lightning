@@ -1,6 +1,5 @@
 use aiken/builtin as builtin
 use aiken/collection.{Index}
-use aiken/collection/list as list
 use aiken/crypto.{VerificationKey, VerificationKeyHash}
 use cl/cheque
 use cl/prelude.{Amount, PosixMilliseconds, Signed}
@@ -40,16 +39,15 @@ pub fn do_add(
   signers: List<VerificationKeyHash>,
 ) -> Bool {
   trace @"Add.In: Input state"
-  trace @"Add.In.0: Keys `keys_in`"
-  trace @"Add.In.1: `Opened(amt1_in, snapshot_in, period_in) = stage_in`"
+  trace @"Add.In.0: `keys_in`": keys_in
+  trace @"Add.In.1: `Opened(amt1_in, snapshot_in, period_in) = stage_in`": stage_in
   expect t.Opened(non_opener_amt_in, snapshot_in, period_in) = stage_in
   trace @"Add.In.2: by_opener": by_opener
   trace @"Add.In.3: Amount `tot_in`"
 
   trace @"Add.Out: Output state"
-  trace @"Add.Out.0: Keys `keys_in`"
-  expect keys_out == keys_in
-  trace @"Add.Out.1: `Opened(non_opener_amt_in, snapshot_out, period_out) = stage_out`"
+  trace @"Add.Out.0: `keys_out`": keys_out
+  trace @"Add.Out.1: `Opened(non_opener_amt_in, snapshot_out, period_out) = stage_out`": stage_out
   expect t.Opened(non_opener_amt_out, snapshot_out, period_out) = stage_out
   trace @"Add.Out.2: Amount `tot_out`"
 
@@ -60,33 +58,35 @@ pub fn do_add(
     } else {
       (keys_in.2nd, keys_in.1st)
     }
-  trace @"Add.Con.0: Transaction is signed by the user key"
+  trace @"Add.Con.0: `keys_out == keys_in`"
+  expect keys_out == keys_in
+  trace @"Add.Con.1: Transaction is signed by the user according to `by_opener` flag"
   expect is_vk_signer(self, signers)
-  trace @"Add.Con.1: Total amount has increased by `x = tot_out - tot_in`, `x > 0`"
+  trace @"Add.Con.2: Total amount has increased by `x = tot_out - tot_in`, `x > 0`"
   let x = tot_out - tot_in
   expect x > 0
   expect
     if by_opener {
-      trace @"Add.Con.2: If `by_opener` then `non_opener_amt_in == non_opener_amt_out`"
+      trace @"Add.Con.3: If `by_opener` then `non_opener_amt_in == non_opener_amt_out`"
       non_opener_amt_out == non_opener_amt_in
     } else {
-      trace @"Add.Con.3: Else not `by_opener` then `non_opener_amt_out == non_opener_amt_in + x`"
+      trace @"Add.Con.4: Else not `by_opener` then `non_opener_amt_out == non_opener_amt_in + x`"
       non_opener_amt_out == non_opener_amt_in + x
     }
   when possible_snapshot is {
     None -> {
-      trace @"Add.Con.4: If no snapshot provided then `snapshot_out == snapshot_in`"
+      trace @"Add.Con.5: If no snapshot provided then `snapshot_out == snapshot_in`"
       expect snapshot_out == snapshot_in
     }
     Some((snapshot, sig)) -> {
-      trace @"Add.Con.5: Else"
-      trace @"Add.Con.5.1: Provided snapshot signed by the other user key"
+      trace @"Add.Con.6: Else"
+      trace @"Add.Con.6.1: Provided snapshot signed by the other user key"
       expect snapshot.verify(cid, snapshot, other, sig)
-      trace @"Add.Con.5.2: `snapshot_out` equals provided union `snapshot_in`"
+      trace @"Add.Con.6.2: `snapshot_out` equals provided union `snapshot_in`"
       expect snapshot_out == snapshot.union(snapshot_in, snapshot)
     }
   }
-  trace @"Add.Con.6: `period_out == period_in`"
+  trace @"Add.Con.7: `period_out == period_in`"
   period_out == period_in
 }
 
@@ -721,7 +721,6 @@ pub fn do_respond_end(
       non_closer_key,
       ub,
     )
-
   trace @"RespondEnd.Con.2: All closer_pends have expired"
   expect _ = reduce_sent_pends(closer_pends, [], lb)
 
@@ -730,6 +729,18 @@ pub fn do_respond_end(
     reduced_receipt_amt,
   )
   closer_amt - reduced_receipt_amt == 0
+}
+
+fn drop_smaller(idx, lst: List<Index>) -> List<Index> {
+  when lst is {
+    [] -> []
+    [i, ..rest] ->
+      if i < idx {
+        drop_smaller(idx, rest)
+      } else {
+        lst
+      }
+  }
 }
 
 fn verify_cheque_idx(
@@ -747,8 +758,7 @@ fn verify_cheque_idx(
     []
   } else {
     trace @"ReduceCheques.Con.2.2: Or `chq_idx elem sq_excl` && all `idx < chq_idx` from sq_excl are discarded"
-    expect [excl_idx, ..sq_excl_rest] =
-      list.drop_while(sq_excl, fn(i) { i < chq_idx })
+    expect [excl_idx, ..sq_excl_rest] = drop_smaller(chq_idx, sq_excl)
     expect chq_idx == excl_idx
     sq_excl_rest
   }
@@ -772,6 +782,7 @@ fn do_reduce_cheques(
   when chqs_in is {
     [chq, ..chqs_rest] -> {
       trace @"ReduceCheques.Con.0: `chq` is signed by the `other`"
+      // Verifies
       expect cheque.verify(cid, chq, other)
       when chq is {
         t.Locked { index, timeout, lock, amount, signature: _sig } -> {
@@ -793,7 +804,7 @@ fn do_reduce_cheques(
             pends_rest,
           )
         }
-        t.Unlocked { index, timeout, secret: _, amount, signature: _ } -> {
+        t.Unlocked { index, timeout, secret: _secret, amount, signature: _sig } -> {
           let sq_excl_rest =
             verify_cheque_idx(prev_chq_idx, index, sq_idx, sq_excl)
           trace @"ReduceCheques.Con.3: `cheque.timeout >= ub`"
