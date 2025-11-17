@@ -1,121 +1,120 @@
 use aiken/collection.{Index}
-use aiken/crypto.{ScriptHash, VerificationKey}
+use aiken/crypto.{ScriptHash, Signature, VerificationKey}
 use cardano/transaction.{OutputReference}
 use cl/prelude.{Amount, Bytes32, Period, Signed, Timeout}
 
-// ## Cheques
+pub type HtlcLock =
+  Bytes32
 
-pub type Normal =
-  (Index, Amount)
-
-pub type HashLock {
-  Blake2b256Lock(Bytes32)
-  Sha2256Lock(Bytes32)
-  Sha3256Lock(Bytes32)
-}
-
-pub type Htlc =
-  (Index, Amount, Timeout, HashLock)
-
-pub type Locked {
-  HtlcLocked(Htlc)
-}
-
-pub type Cheque {
-  NormalCheque(Normal)
-  LockedCheque(Locked)
-}
-
-pub type Secret =
-  ByteArray
-
-pub type Unlocked {
-  Unhtlc(Htlc, Secret)
-}
-
-pub type MCheque {
-  MNormal(Normal)
-  MLocked(Locked)
-  MUnlocked(Unlocked)
-}
-
-// ## Channel
+// Fully BLN compatible HTLC secret
+pub type HtlcSecret =
+  Bytes32
 
 /// Unique 20 byte channel ID formed formed on init
 pub type ChannelId =
   ByteArray
 
-// ## Snapshot
-
 pub type Exclude =
   List<Index>
 
-///
-pub type Squash =
-  (Amount, Index, Exclude)
+pub type Squash {
+  amount: Amount,
+  index: Index,
+  exclude: Exclude,
+}
 
-///
 pub type Snapshot =
   (Squash, Squash)
 
-// ## Receipt 
-
-/// 
-pub type Receipt =
-  (Option<Signed<Snapshot>>, List<Signed<MCheque>>)
-
-pub type LockedReduced {
-  HtlcReduced(Amount, Timeout, HashLock)
+pub type Cheque {
+  Locked {
+    index: Index,
+    timeout: Timeout,
+    lock: HtlcLock,
+    amount: Amount,
+    signature: Signature,
+  }
+  Unlocked {
+    index: Index,
+    timeout: Timeout,
+    secret: HtlcSecret,
+    amount: Amount,
+    signature: Signature,
+  }
 }
 
-// ## Pend
+pub type Receipt =
+  (Option<Signed<Snapshot>>, List<Cheque>)
+
+pub type HtlcLockedReduced =
+  (Amount, Timeout, HtlcLock)
 
 pub type Pend =
-  (Amount, List<LockedReduced>)
-
-// ## Spend Redeemer
+  List<HtlcLockedReduced>
 
 pub type Keys =
   (VerificationKey, VerificationKey)
 
-// ## Stages 
+pub type KeyIdx =
+  Index
+
+pub type NonOpenerWithdrawal =
+  Amount
+
+pub type CloserWithdrawal =
+  Amount
+
+pub type NonResolverWithdrawal =
+  Amount
+
 pub type Stage {
-  Opened(Amount, Snapshot, Period)
-  Closed(Amount, Squash, Timeout, Pend)
-  Responded(Amount, Pend, Pend)
-  Resolved(Pend, Pend)
-  Elapsed(Pend)
+  Opened(NonOpenerWithdrawal, Snapshot, Period)
+  Closed(CloserWithdrawal, Squash, Timeout, Pend)
+  Resolved(NonResolverWithdrawal, Pend, Pend)
 }
 
-// ## Datum 
+// min ADA expressed in ADA (1_000_000 Lovelace)
+pub type MinAdaAmount =
+  Int
+
+pub type MinAdaOwner =
+  Int
 
 pub type Datum =
-  (ScriptHash, Keys, Stage)
-
-// ## Spend Redeemer
+  (ScriptHash, Keys, Stage, MinAdaAmount, MinAdaOwner)
 
 pub type SpendRedeemer {
   DeferToMint
 }
 
-// ## Mint Redeemer
+pub type Secrets =
+  List<(Index, HtlcSecret)>
 
 pub type MintRedeemer =
-  (Option<OutputReference>, List<NStep>)
+  (Option<OutputReference>, List<Step>)
 
-pub type Secrets =
-  List<(Index, Secret)>
-
-pub type NStep {
-  Continuing(CStep)
-  End(Secrets)
+pub type Step {
+  Continuing(ContinuingStep)
+  End(EndStep)
 }
 
-pub type CStep {
-  Add(Option<Signed<Snapshot>>)
-  Close(Receipt)
-  Respond(Receipt, Bool)
-  Resolve(Secrets)
+pub type EndStep {
+  ElapseEnd(Secrets)
+  EndResolved(Secrets)
+  RespondEnd(Receipt)
+}
+
+// This is a slight optimization to avoid
+// iteration over `sent` cheques to
+// release expired ones.
+pub type DropOld =
+  Bool
+
+pub type ContinuingStep {
+  Add { by_opener: Bool, snapshot: Option<Signed<Snapshot>> }
+  Close { by_opener: Bool, receipt: Receipt }
   Elapse(Secrets)
-  Free(Secrets, Bool)
+  FreeInClosed(Secrets)
+  FreeInResolved { by_resolver: Bool, secrets: Secrets, drop_old: DropOld }
+  Respond { receipt: Receipt, drop_old: DropOld }
 }

@@ -8,7 +8,9 @@
     git-hooks-nix.inputs.nixpkgs.follows = "nixpkgs";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
-    aiken.url = "github:aiken-lang/aiken/94ff20253b3d43ee5fcf501bb13902f58c729791";
+    # aiken.url = "github:aiken-lang/aiken/35e41a1724ca75273e8cd256e07a7d135056b311";
+    # paluh/disabled-tests
+    aiken.url = "github:paluh/aiken/8d019336d2fb923ce9e5906eae8b7c0c84b0007e";
   };
 
   outputs = inputs @ {flake-parts, ...}:
@@ -26,7 +28,41 @@
         pkgs,
         system,
         ...
-      }: {
+      }:
+      let
+        devShell = {
+          name = "cardano-lightning";
+          nativeBuildInputs = [
+            config.treefmt.build.wrapper
+          ];
+          shellHook = ''
+            ${config.pre-commit.installationScript}
+            echo 1>&2 "Welcome to the development shell!"
+          '';
+
+          packages = [
+            inputs'.aiken.packages.aiken
+          ];
+        };
+        devShellExtra =
+          devShell
+          // {
+            name = "cardano-lightning-with-extras";
+            shellHook = ''
+              ${config.pre-commit.installationScript}
+              echo 1>&2 "Welcome to the development shell with some extras!"
+            '';
+            packages =
+              devShell.packages
+              ++ [
+                pkgs.nodePackages.mermaid-cli
+                pkgs.plantuml
+                pkgs.python3
+                pkgs.python3Packages.toml
+                # inputs.capkgs.packages.${system}.cardano-cli-input-output-hk-cardano-node-10-2-1-52b708f
+              ];
+          };
+      in {
         treefmt = {
           projectRootFile = "flake.nix";
           flakeFormatter = true;
@@ -51,21 +87,9 @@
             entry = "${inputs'.aiken.packages.aiken}/bin/aiken fmt ./aik";
           };
         };
-        # NOTE: You can also use `config.pre-commit.devShell`
-        devShells.default = pkgs.mkShell {
-          nativeBuildInputs = [
-            config.treefmt.build.wrapper
-          ];
-          shellHook = ''
-            ${config.pre-commit.installationScript}
-            echo 1>&2 "Welcome to the development shell!"
-          '';
-          name = "cardano-lightning";
-          # Let's keep this "path discovery techinque" here for refernece:
-          # (builtins.trace (builtins.attrNames inputs.cardano-addresses.packages.${system}) inputs.cardano-cli.packages)
-          packages = [
-            inputs'.aiken.packages.aiken
-          ];
+        devShells = {
+          default = pkgs.mkShell devShell;
+          extras = pkgs.mkShell devShellExtra;
         };
       };
       flake = {};

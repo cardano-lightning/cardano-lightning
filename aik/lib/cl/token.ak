@@ -8,15 +8,18 @@ use cl/types.{ChannelId}
 /// a single 'bolt' token is used.
 pub const bolt = "⚡"
 
-const prefix = "⚡"
+const prefix = bolt
 
 const prefix_len = prefix |> bytearray.length
 
-pub fn get_cid(name: AssetName) -> ChannelId {
+pub fn cid_from_token(name: AssetName) -> ChannelId {
   name |> bytearray.drop(prefix_len)
 }
 
-//
+pub fn cid_to_token(cid: ChannelId) -> AssetName {
+  prefix |> bytearray.concat(cid)
+}
+
 // Return value is `(n_mint, n_burn)`
 /// We depend on the following assumptions: 
 /// 

@@ -4,10 +4,10 @@ Status: Draft
 
 ## Cheque formats
 
-There are multiple approaches which we can accomodate in order to exchange
+There are multiple approaches which we can accommodate in order to exchange
 commitments and track the channel state:
 
-- `SimpleCheque` - plain and cummulative single direction payments:
+- `SimpleCheque` - plain and cumulative single direction payments:
 
   ```typescript
   type SimpleCheque = {
@@ -40,21 +40,21 @@ commitments and track the channel state:
 
 ## Cashouts
 
-Because consensus will loook in every case the same - just a final balance
-signed by both parties the only worth consideration flow which we should analyze
+Because consensus will look in every case the same - just a final balance
+signed by both parties the only worth consideration flow which we should analyse
 is non consensus closure.
 
 ### `SimpleCheque`
 
-There are few interesting properties of this scheme:
+There are a few interesting properties of this scheme:
 
-- Unbounded loss - an inactive party can be serverily penalized if it does not
+- Unbounded loss - an inactive party can be severely penalized if it does not
   respond during closure.
 - Unidirectionality - only a single party has to sign the intention.
 - Possibly huge integer values - this can have slight impact on the ledger
   costs.
 
-Conrecte unbounded loss example:
+Concrete unbounded loss example:
 
 ```mermaid
  sequenceDiagram

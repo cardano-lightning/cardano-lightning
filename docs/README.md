@@ -1,12 +1,13 @@
 # docs
 
-## Overview
+## Repo overview
 
-The repo is still evolving in form. At the time of writing we have the following
-subdirs:
+```shell
+├── adrs              # Architectural Decision Records
+├── design            # Protocol design docs and notes
+├── glossary.md       # Glossary of terms
+├── meeting-notes     # Memos recording meetings, particularly decisions and actionables
+└── README.md
+```
 
-- `./adrs` : Architectural Decision Records
-- `./admin` : Docs about project administration
-- `./meeting-notes` : memos recording meetings, particularly decisions and
-  actionables
-- `./design` : Specs and material related to the design of the protocol
+Please refer to specific READMEs in each subdir for more information.
