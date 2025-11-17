@@ -42,8 +42,8 @@ pub fn do_add(
   trace @"Add.In.0: `keys_in`": keys_in
   trace @"Add.In.1: `Opened(amt1_in, snapshot_in, period_in) = stage_in`": stage_in
   expect t.Opened(non_opener_amt_in, snapshot_in, period_in) = stage_in
-  trace @"Add.In.2: by_opener": by_opener
-  trace @"Add.In.3: Amount `tot_in`"
+  trace @"Add.In.2: `by_opener` flag": by_opener
+  trace @"Add.In.3: Amount `tot_in`": tot_in
 
   trace @"Add.Out: Output state"
   trace @"Add.Out.0: `keys_out`": keys_out
@@ -80,7 +80,7 @@ pub fn do_add(
     }
     Some((snapshot, sig)) -> {
       trace @"Add.Con.6: Else"
-      trace @"Add.Con.6.1: Provided snapshot signed by the other user key"
+      trace @"Add.Con.6.1: Provided snapshot signed by the partner key"
       expect snapshot.verify(cid, snapshot, other, sig)
       trace @"Add.Con.6.2: `snapshot_out` equals provided union `snapshot_in`"
       expect snapshot_out == snapshot.union(snapshot_in, snapshot)
@@ -105,9 +105,10 @@ pub fn do_close(
 ) -> Bool {
   trace @"Close.In: Input state"
   trace @"Close.In.0: Keys `keys_in`": keys_in
-  trace @"Close.In.1: Opened(non_opener_amt, snapshot_in, respond_period) = stage_in`": stage_in
+  trace @"Close.In.1: `Opened(non_opener_amt, snapshot_in, respond_period) = stage_in`": stage_in
+  trace @"Close.In.2: `by_opener` flag": by_opener
   expect t.Opened(non_opener_amt_in, snapshot_in, respond_period) = stage_in
-  trace @"Close.In.2: Amount `tot_in`": tot_in
+  trace @"Close.In.3: Amount `tot_in`": tot_in
 
   trace @"Close.Out: Output state"
   trace @"Close.Out.0: Keys `keys_out`": keys_out

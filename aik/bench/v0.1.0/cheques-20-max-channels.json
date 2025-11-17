@@ -1,12 +1,12 @@
 {
-  "bench_new_channels": 30,
-  "bench_add_steps": 30,
-  "bench_close_steps": 9,
-  "bench_respond_steps": 12,
-  "bench_elapse_steps": 30,
-  "bench_free_in_closed_steps": 30,
-  "bench_free_in_resolved_steps": 30,
-  "bench_end_resolved_steps": 30,
-  "bench_elapse_end_steps": 30,
-  "bench_respond_end_steps": 6
+    "bench_new_channels": 60,
+    "bench_add_steps": 46,
+    "bench_close_steps": 8,
+    "bench_respond_steps": 10,
+    "bench_elapse_steps": 43,
+    "bench_free_in_closed_steps": 36,
+    "bench_free_in_resolved_steps": 38,
+    "bench_end_resolved_steps": 56,
+    "bench_elapse_end_steps": 56,
+    "bench_respond_end_steps": 6
 }

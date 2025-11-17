@@ -112,6 +112,7 @@ if __name__ == '__main__':
     # 'suite' command (no additional args)
     suite_parser = subparsers.add_parser('suite', help="Run a suite of benchmarks with predefined parameters")
     suite_parser.add_argument('--output-dir', type=str, default='.', help="Directory to save output files")
+    suite_parser.add_argument('--max-size', type=int, default=None, help="Max size for aiken bench command, overrides hardcoded values for all suite runs if provided")
 
     # 'single' command (existing args)
     single_parser = subparsers.add_parser('single', help="Run a single benchmark with specified parameters")
@@ -128,6 +129,8 @@ if __name__ == '__main__':
     if args.command == 'suite':
         # Predefined runs: (max_cheques, max_size)
         runs = [(1, 60), (5, 40), (10, 30), (20, 30)]
+        if args.max_size is not None:
+            runs = [(cheques, args.max_size) for cheques, _ in runs]
         for max_cheques, max_size in runs:
             run_single_benchmark(max_cheques, max_size, args.output_dir)
 

@@ -14,12 +14,25 @@ often and should be aggressively batched.
 We provide an extra script which takes the results and computes the percentile
 of the limits for a given operation which was tested:
 
-```haskell
-maxTxExecutionCPU = 10_000_000_000
+## Running the benchmarks
 
-maxTxExecutionMemory = 14_000_000
+There is a helper script to run the benchmarks. Please run it from the `aik` directory:
 
-maxBlockExecutionCPU = 20_000_000_000
-
-maxBlockExecutionMemory = 62_000_000
+```shell
+$ ./bin/bench.sh suite --max-size 50 --output-dir ./bench/vX.Y.Z/
 ```
+
+This script will go over predefined capacities and run the benchmarks for each of them. For every capacity it will output three JSON files:
+
+* One containing the raw results.
+
+* One containing the results expressed as percentages of the maximum execution budget.
+
+* One containing the summary of the results pointing to the maximum capacity which was able to fit
+  into the execution budget.
+
+The execution budget used in the computations is according to the current Cardano protocol parameters.
+
+## Benchmark results
+
+
