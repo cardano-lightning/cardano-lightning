@@ -26,8 +26,8 @@ A user can perform various high level actions, including:
 Signposting:
 
 - For gentler intro to CL, check out the
-  [blog](https://cardano-lightning.org/blog).
-  introduction lifecycle of the channel.
+  [blog](https://cardano-lightning.org/blog). introduction lifecycle of the
+  channel.
 - For terms, see the [glossary](../glossary.md)
 - For explanations on how to read this spec, see the appendix.
 
@@ -65,12 +65,12 @@ The steps that progress from one stage to the next are follows:
   partner's account.
 - `close : Opened -> Closed` : A partner submits their receipt of their L2
   transacting. The partner should no longer accept cheques on the L2.
-- `respond : Closed -> Resolved` : The non-closer partner submits their
-  receipt. They release the funds they are owed, and not still locked.
-  The closer funds are not yet released.
+- `respond : Closed -> Resolved` : The non-closer partner submits their receipt.
+  They release the funds they are owed, and not still locked. The closer funds
+  are not yet released.
 - `elapse : Closed -> Resolved` : A closer can release their funds, up to
-  pending locked cheques, if the `respond` is not sufficiently punctual.
-  The non-closer funds are not yet released.
+  pending locked cheques, if the `respond` is not sufficiently punctual. The
+  non-closer funds are not yet released.
 
 Steps that are fixed to a stage
 
@@ -79,8 +79,8 @@ Steps that are fixed to a stage
   still need to know the latest are met to free some locked cheques. The value
   is added to their account but not released
 - `free : Resolved -> Resolved` : Either partner frees locked cheques, and funds
-  are immediately released. non-resolver during initial `free` is forced to withdraw
-  his balance as well.
+  are immediately released. non-resolver during initial `free` is forced to
+  withdraw his balance as well.
 
 Unstaging steps - those can be only executed by the min-ADA owner:
 
@@ -127,32 +127,42 @@ fn mk_cid(seed, idx) {
 
 #### Token control
 
-Channel tokens are controlled by the script throughout the channel lifecycle. They are never released and burned at the end.
-Bold tokens on the other hand are freely released and can be present outside of the channels UTxO on the chain.
+Channel tokens are controlled by the script throughout the channel lifecycle.
+They are never released and burned at the end. Bold tokens on the other hand are
+freely released and can be present outside of the channels UTxO on the chain.
 
 ### Timeouts
 
 #### Expiration and validity proofs
 
-Across the CL protocol we deal with timeouts. We consider the timeout itself to be included in the validity period meaning when a given timeout is greater than or equal to the "current time" (indicated by tx validity range) we consider that validity period to be still ongoing.
-On the ledger transaction lower bound is exclusive and a finite upper bound is always inclusive: `(lb, ub]`. Given that we prove:
+Across the CL protocol we deal with timeouts. We consider the timeout itself to
+be included in the validity period meaning when a given timeout is greater than
+or equal to the "current time" (indicated by tx validity range) we consider that
+validity period to be still ongoing. On the ledger transaction lower bound is
+exclusive and a finite upper bound is always inclusive: `(lb, ub]`. Given that
+we prove:
 
-* Expiration through `timeout <= lb`:
-  * We know that `lb` has already past.
-  * So we can use equality in here.
+- Expiration through `timeout <= lb`:
 
-* Non-expiration `timeout >= ub`:
-  * `ub` is possibly "now".
-  * `timeout >= ub` is OK as timeout itself belongs to the interval.
+  - We know that `lb` has already past.
+  - So we can use equality in here.
+
+- Non-expiration `timeout >= ub`:
+  - `ub` is possibly "now".
+  - `timeout >= ub` is OK as timeout itself belongs to the interval.
 
 #### Cheques
 
-There is a subtle incentive game involved when partners prove the timeout. If a partner wants to free some of his liabilities he should prove their expiration.
-We also require non-expiration proof when unlocking the other partner liabilities. We can not tolerate expiration here as this would break the security of the payment routing and HTLC composition.
+There is a subtle incentive game involved when partners prove the timeout. If a
+partner wants to free some of his liabilities he should prove their expiration.
+We also require non-expiration proof when unlocking the other partner
+liabilities. We can not tolerate expiration here as this would break the
+security of the payment routing and HTLC composition.
 
 #### Response
 
-The protocol is polite in the context of response step timeout and allows to execute it even after the timeout.
+The protocol is polite in the context of response step timeout and allows to
+execute it even after the timeout.
 
 ### Data
 
@@ -167,9 +177,10 @@ script that verifies that the data is well-formed.
 Cheques a vehicle through which funds are sent from one partner to the other. As
 such they must be understood on the L1.
 
-Cheque indicates that the sender owes the receiver funds subject to extra conditions.
-A "hash time lock" cheque (HTLC) is a lock which consists of the elements: a timeout and a hash lock.
-To be redeemable, the receiver must provide the "secret" that hashes to the lock before the timeout.
+Cheque indicates that the sender owes the receiver funds subject to extra
+conditions. A "hash time lock" cheque (HTLC) is a lock which consists of the
+elements: a timeout and a hash lock. To be redeemable, the receiver must provide
+the "secret" that hashes to the lock before the timeout.
 
 ```aiken
 type Index = Int
