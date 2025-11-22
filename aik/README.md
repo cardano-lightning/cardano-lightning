@@ -2,10 +2,13 @@
 
 Bidirectional payment channel implemented in Aiken.
 
-Includes hash time locking mechanism fully compatible with Bitcoin's Lightning Network:
-  * `payment_hash=sha256(secret)`
-  * |secret| == 32 bytes
-  * Timelock is expressed in Cardano slots (POSIX seconds in essence) which has to be translated to Bitcoin blocks during cross-chain composition.
+Includes hash time locking mechanism fully compatible with Bitcoin's Lightning
+Network:
+
+- `payment_hash=sha256(secret)`
+- |secret| == 32 bytes
+- Timelock is expressed in Cardano slots (POSIX seconds in essence) which has to
+  be translated to Bitcoin blocks during cross-chain composition.
 
 ## Repo structure
 
@@ -25,7 +28,9 @@ $ tree -L 1
 
 ## Developing
 
-We provide a at the root of this rep nix shell for development but you can use any other method to install Aiken which is the only dependency. To enter the nix shell, run:
+We provide a at the root of this rep nix shell for development but you can use
+any other method to install Aiken which is the only dependency. To enter the nix
+shell, run:
 
 ```shell
 $ nix develop
@@ -33,9 +38,12 @@ $ nix develop
 
 ## Testing
 
-We provide an extensive test and benchmarking suite. In order for it to work we are unfortunately forced to mock the signature verification function as we are not able to produce signatures in Aiken (yet).
+We provide an extensive test and benchmarking suite. In order for it to work we
+are unfortunately forced to mock the signature verification function as we are
+not able to produce signatures in Aiken (yet).
 
-Testing covers the same functionality as the benchmarking suite but is faster to run:
+Testing covers the same functionality as the benchmarking suite but is faster to
+run:
 
 ```shell
 $ aiken check --env testing
@@ -43,5 +51,5 @@ $ aiken check --env testing
 
 ## Benchmarking
 
-Please refer to `bench/README.md` for more information about the benchmarking suite and what kind of benchmarks we collect.
-
+Please refer to `bench/README.md` for more information about the benchmarking
+suite and what kind of benchmarks we collect.

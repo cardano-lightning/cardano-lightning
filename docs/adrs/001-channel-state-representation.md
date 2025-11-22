@@ -40,9 +40,9 @@ commitments and track the channel state:
 
 ## Cashouts
 
-Because consensus will look in every case the same - just a final balance
-signed by both parties the only worth consideration flow which we should analyse
-is non consensus closure.
+Because consensus will look in every case the same - just a final balance signed
+by both parties the only worth consideration flow which we should analyse is non
+consensus closure.
 
 ### `SimpleCheque`
 

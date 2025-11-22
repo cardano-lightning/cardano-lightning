@@ -23,8 +23,9 @@ replaced by single hyphen characters `-`.
 
 The value of [channel](#channel) attributed to one of its
 [participants](#participant). Typically this is represented by a single integer,
-since channels are mono-asset.
-In [opened](#opened) this represents the initial deposit but in all other stages it equals to the amount of assets owned by the participant regardless of all the other liabilities from both sides.
+since channels are mono-asset. In [opened](#opened) this represents the initial
+deposit but in all other stages it equals to the amount of assets owned by the
+participant regardless of all the other liabilities from both sides.
 
 ### add
 
@@ -39,7 +40,9 @@ preferred over alternatives such as `value` and `quantity`.
 
 ### capacity
 
-The maximum number of cheques that can be accepted during the settlement steps. This value can significantly affect the on-chain batching limits from both performance and tx-size perspective.
+The maximum number of cheques that can be accepted during the settlement steps.
+This value can significantly affect the on-chain batching limits from both
+performance and tx-size perspective.
 
 ### channel
 
@@ -49,8 +52,11 @@ includes two accounts, one for each participant.
 
 ### cheque
 
-An object exchanged on the[L2](#L2) and used on the[L1](#L1) to prove what funds are owed.
-They contain a lock, timeout, index and value. Cheques and are valid only if signed, non expired and the index is correct in relation to the [snapshot](#snapshot). Cheque or derived [pend](#pend) can be unlocked only if paired with a corresponding secret.
+An object exchanged on the[L2](#L2) and used on the[L1](#L1) to prove what funds
+are owed. They contain a lock, timeout, index and value. Cheques and are valid
+only if signed, non expired and the index is correct in relation to the
+[snapshot](#snapshot). Cheque or derived [pend](#pend) can be unlocked only if
+paired with a corresponding secret.
 
 ### close
 
@@ -78,16 +84,20 @@ of time since the close. The participant unlocks the funds owed.
 ### elapse-end
 
 A [step](#step) that combines the [elapse](#elapse) and [end](#end) steps into
-one. This is performed by the participant who performed the [close](#close) step when there are no funds remaining for the other partner and the [min-ada](#min-ada) belongs to him.
+one. This is performed by the participant who performed the [close](#close) step
+when there are no funds remaining for the other partner and the
+[min-ada](#min-ada) belongs to him.
 
 ### end
 
 A [step](#step) that [unstages](#unstage) a [resolved](#resolved)
-[channel](#channel). This step can be only performed by the [min-ada](#min-ada) owner.
+[channel](#channel). This step can be only performed by the [min-ada](#min-ada)
+owner.
 
 ### free
 
-A step which releases pends during in the [closed](#closed) and [resolved](#resolved) stages.
+A step which releases pends during in the [closed](#closed) and
+[resolved](#resolved) stages.
 
 ### funds
 
@@ -110,7 +120,8 @@ as channel utxos and txs that step channels.
 ### L2
 
 Shorthand for layer two, also called 'off-chain transacting'. Characterised by
-simply 'not [L1](#L1)', it includes messages passed between channel partners exchanging [cheques](#cheque) and [snapshots](#snapshot).
+simply 'not [L1](#L1)', it includes messages passed between channel partners
+exchanging [cheques](#cheque) and [snapshots](#snapshot).
 
 ### lifecycle
 
@@ -121,7 +132,9 @@ word.)
 
 ### min-ada
 
-The minimum ada that is locked in the channel utxo by the [opener](#opener) to satisfy the Cardano's ledger rule. We track the information about the min-ada owner and amout to be able to release it during the [end](#end) step.
+The minimum ada that is locked in the channel utxo by the [opener](#opener) to
+satisfy the Cardano's ledger rule. We track the information about the min-ada
+owner and amout to be able to release it during the [end](#end) step.
 
 ### normalize
 
@@ -140,8 +153,8 @@ as `other`.
 
 Cheques issued by the other partner which belong to the peer which we are
 talking about. `Squash` which consists `own` cheques can be also attributed as
-`own`.
-Across the code we use ownership terms like `closer_cheques` or `non_closer_snapshot` to indicate the same concept.
+`own`. Across the code we use ownership terms like `closer_cheques` or
+`non_closer_snapshot` to indicate the same concept.
 
 ### open
 
@@ -166,29 +179,35 @@ This is the preferred term from the bitcoin ecosystem.
 
 ### pend
 
-Pend is created out of a locked [cheque](#cheque) during the settlement - `close` and `respond` steps. Cheque signature is verified on the [L1](#l1). Pend is stored till the final resolution - it can be discarded, unlocked or expired.
+Pend is created out of a locked [cheque](#cheque) during the settlement -
+`close` and `respond` steps. Cheque signature is verified on the [L1](#l1). Pend
+is stored till the final resolution - it can be discarded, unlocked or expired.
 
 ### received
-This is a synonym for `own` when the `self` is clear from the context. This naming
-gives a bit more flexibility as it can be also used in contexts like `closer_received_cheques` and is BLN consistent.
+
+This is a synonym for `own` when the `self` is clear from the context. This
+naming gives a bit more flexibility as it can be also used in contexts like
+`closer_received_cheques` and is BLN consistent.
 
 ### respond
 
 A [step](#step) that changes the [stage](#stage) from [closed](#closed) to
-[resolved](#resolved). This is performed by the [participant](#participant)
-who did not performed the [close](#close) step. The participant supplies to
-their summary of the off-chain transacting to the[L1](#L1) and unlocks their due
+[resolved](#resolved). This is performed by the [participant](#participant) who
+did not performed the [close](#close) step. The participant supplies to their
+summary of the off-chain transacting to the[L1](#L1) and unlocks their due
 funds.
 
 ### respond-end
 
 A [step](#step) that combines the [respond](#respond) and [end](#end) steps into
-one. This step can be only performed by the [min-ada](#min-ada) owner when there are no funds remaining for the other partner.
+one. This step can be only performed by the [min-ada](#min-ada) owner when there
+are no funds remaining for the other partner.
 
 ### remote
 
 When discussing a [channel](#channel) from the perspective of one of the two
-[participants](#participant), the term 'remote' refers to the other participant. A synonym for 'other'. This is term is used by the bitcoin ecosystem.
+[participants](#participant), the term 'remote' refers to the other participant.
+A synonym for 'other'. This is term is used by the bitcoin ecosystem.
 
 ### respond period
 
@@ -198,7 +217,11 @@ as well.
 
 ### resolved
 
-A third [stage](#stage) of a [channel](#channel). To simplify the protocol this stage can still contain remaining funds on the [non-closer](#non-closer) after the [elapse](#elapse) step but in general this stage indicates that the contestation has ended and both parties can unlock their remaining funds through the [end](#end) or [free](#free) steps.
+A third [stage](#stage) of a [channel](#channel). To simplify the protocol this
+stage can still contain remaining funds on the [non-closer](#non-closer) after
+the [elapse](#elapse) step but in general this stage indicates that the
+contestation has ended and both parties can unlock their remaining funds through
+the [end](#end) or [free](#free) steps.
 
 ### sent
 
@@ -216,7 +239,8 @@ key'.
 
 ### squash
 
-An element of [snapshot] which represents a particular partner's cumulative and unlocked cheques.
+An element of [snapshot] which represents a particular partner's cumulative and
+unlocked cheques.
 
 ### snapshot
 

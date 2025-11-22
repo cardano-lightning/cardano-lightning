@@ -8,9 +8,12 @@
 
 ## Overview
 
-Bidirectional payment channels inspired and compatible with Bitcoin Lightning Network. Core protocol design (L1 and L2) together with smart contracts.
+Bidirectional payment channels inspired and compatible with Bitcoin Lightning
+Network. Core protocol design (L1 and L2) together with smart contracts.
 
-Unidirectional but still composable payment channels with instant settlement are implemented separately in the [konduit](https://github.com/cardano-lightning/konduit) repo.
+Unidirectional but still composable payment channels with instant settlement are
+implemented separately in the
+[konduit](https://github.com/cardano-lightning/konduit) repo.
 
 ## Repo overview
 
@@ -36,7 +39,8 @@ For the base devel flow (Aiken compiler):
 $ nix develop
 ```
 
-For a shell with additional tools required for more testing and **documentation** (mermaid-cli, plantuml):
+For a shell with additional tools required for more testing and
+**documentation** (mermaid-cli, plantuml):
 
 ```shell
 $ nix develop .#extras

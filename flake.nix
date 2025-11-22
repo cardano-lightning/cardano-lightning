@@ -28,8 +28,7 @@
         pkgs,
         system,
         ...
-      }:
-      let
+      }: let
         devShell = {
           name = "cardano-lightning";
           nativeBuildInputs = [
