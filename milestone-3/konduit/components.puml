@@ -1,0 +1,84 @@
+@startuml
+skinparam componentStyle uml2
+
+package "Konduit L2 Server" {
+
+  [HTTP Server\n(Axum + Router)] as Server
+
+  component "Channel Manager" as Channel <<core>>
+  component "State Manager\n(konduit-data)" as State <<core>>
+  component "Transaction Builder\n(konduit-tx)" as Tx <<core>>
+  component "Admin & Cron" as Admin <<aux>>
+  component "API Types\n(konduit-api)" as Api
+
+  note right of Channel
+    <b>Core</b>
+    • Squash / quote / pay channels
+    • Empirical: channel hold time, timeouts
+  end note
+
+  note right of Admin
+    <b>Auxiliary</b>
+    background jobs + admin endpoints
+  end note
+}
+
+component "Cardano Adapter" as CardanoAdapter
+
+note right of CardanoAdapter
+  <b>L1 Interaction</b>
+  • Read / store: chain indexer
+  • Write: submit transactions
+end note
+
+
+cloud "Cardano L1" as L1
+cloud "External FX" as FX
+
+Server --> Channel : uses
+Server --> State : uses
+Server --> Admin : uses
+Server --> Api : uses
+Server --> FX : queries rates
+
+Channel --> State : reads / writes
+Channel --> Tx : uses
+Channel --> CardanoAdapter : uses
+
+Tx --> CardanoAdapter : uses
+Admin --> State : syncs / inspects
+Admin --> CardanoAdapter : queries tip
+
+CardanoAdapter ..> L1 : reads (tip / indexer / UTxOs)
+CardanoAdapter --> L1 : submits txs
+
+@enduml
+/*
+@startuml
+/!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+Container_Boundary(konduit, "Konduit L2 Server") {
+  Component(Server, "Konduit Server", "Rust/Axum", "HTTP API + routes")
+  Component(Channel, "Channel Manager", "", "squash/quote/pay logic")
+  Component(State, "State Manager", "konduit-data", "DB + models")
+  Component(Tx, "Tx Builder", "konduit-tx", "Cardano tx construction")
+  Component(Admin, "Admin + Cron", "", "tip sync, show, scheduled jobs")
+  Component(Api, "API Types", "konduit-api", "shared models")
+}
+
+System_Ext(Cardano, "Cardano L1", "Reads tip/state, submits txs")
+System_Ext(FX, "FX Data", "")
+
+Rel(Server, Channel, "uses")
+Rel(Server, State, "uses")
+Rel(Server, Admin, "uses")
+Rel(Server, Api, "uses")
+Rel(Channel, State, "reads/writes")
+Rel(Channel, Tx, "uses")
+Rel(Channel, Cardano, "via adapter")
+Rel(Admin, State, "syncs")
+Rel(Admin, Cardano, "queries tip")
+Rel(Server, FX, "queries")
+note right of Channel: Core L2 channels\nEmpirical: channel hold times TBD
+@enduml
+*/

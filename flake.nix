@@ -2,15 +2,14 @@
   description = "Cardano Lightning Monorepo";
 
   inputs = {
-    flake-parts.url = "github:hercules-ci/flake-parts";
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    git-hooks-nix.url = "github:cachix/git-hooks.nix";
-    git-hooks-nix.inputs.nixpkgs.follows = "nixpkgs";
-    treefmt-nix.url = "github:numtide/treefmt-nix";
-    treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
-    # aiken.url = "github:aiken-lang/aiken/35e41a1724ca75273e8cd256e07a7d135056b311";
-    # paluh/disabled-tests
     aiken.url = "github:paluh/aiken/8d019336d2fb923ce9e5906eae8b7c0c84b0007e";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    git-hooks-nix.inputs.nixpkgs.follows = "nixpkgs";
+    git-hooks-nix.url = "github:cachix/git-hooks.nix";
+    jailed-agents.url = "github:andersonjoseph/jailed-agents";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
   };
 
   outputs = inputs @ {flake-parts, ...}:
@@ -29,6 +28,8 @@
         system,
         ...
       }: let
+
+
         devShell = {
           name = "cardano-lightning";
           nativeBuildInputs = [
@@ -43,6 +44,34 @@
             inputs'.aiken.packages.aiken
           ];
         };
+
+        commonJail = {
+          baseJailOptions =
+            let
+              jail = inputs.jailed-agents.lib.${pkgs.system}.internals.jail;
+            in [
+              jail.combinators.network
+              jail.combinators.time-zone
+              jail.combinators.no-new-session
+              jail.combinators.mount-cwd
+              (jail.combinators.try-fwd-env "PKG_CONFIG_PATH")
+              (jail.combinators.try-fwd-env "LD_LIBRARY_PATH")
+            ];
+
+          extraReadwriteDirs = [
+            "~/projects/cardano-lightning/konduit"
+            "~/.config/opencode"
+            "~/.local/share/opencode"
+            "~/.cache/opencode"
+          ];
+          extraPkgs = [
+            inputs'.aiken.packages.aiken
+            pkgs.plantuml
+            pkgs.python3Packages.toml
+          ];
+        };
+
+
         devShellExtra =
           devShell
           // {
@@ -58,6 +87,16 @@
                 pkgs.plantuml
                 pkgs.python3
                 pkgs.python3Packages.toml
+
+                (inputs.jailed-agents.lib.${pkgs.system}.makeJailedOpencode {
+                  inherit (commonJail) baseJailOptions extraPkgs extraReadwriteDirs;
+                })
+                (inputs.jailed-agents.lib.${pkgs.system}.makeJailedOpencode {
+                  name = "jailed-bash";
+                  pkg = pkgs.bashInteractive;
+                  inherit (commonJail) baseJailOptions extraPkgs extraReadwriteDirs;
+                })
+
                 # inputs.capkgs.packages.${system}.cardano-cli-input-output-hk-cardano-node-10-2-1-52b708f
               ];
           };

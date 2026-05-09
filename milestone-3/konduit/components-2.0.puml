@@ -1,0 +1,150 @@
+@startuml
+skinparam componentStyle uml2
+
+package "Konduit L2 Server" {
+
+  [HTTP Server\n(Actix-web)] as Server
+
+  component "Channel Manager" as Channel <<core>>
+  component "State Manager\n(konduit-data)" as State <<core>>
+  component "Transaction Builder\n(konduit-tx)" as Tx <<core>>
+  component "Admin & Cron" as Admin <<aux>>
+  component "DB Module\n(konduit-server/src/db)" as Db
+  component "FX Client" as FX
+
+  note right of Channel
+    <b>Core</b>
+    • Squash / quote / pay channels
+    • Empirical: channel hold time, timeouts
+  end note
+
+  note right of Admin
+    <b>Auxiliary</b>
+    background jobs + admin endpoints
+  end note
+
+  note right of Db
+    <b>Storage</b>
+    • Sled-based persistence
+    • Channel CRUD operations
+  end note
+
+  note right of FX
+    <b>External FX</b>
+    • Binance, Kraken, CoinGecko
+    • msat ↔ lovelace conversion
+  end note
+}
+
+package "konduit-data" as DataPackage {
+  component "L1Channel" as L1Channel
+  component "Receipt" as Receipt
+  component "Squash\nSquashProposal" as Squash
+  component "Locked" as Locked
+  component "Quote\nPayBody" as ApiTypes
+  component "Stage\nUsed" as Stage
+
+  note right of L1Channel
+    L1 state tracking with
+    Stage::Opened/Ended
+  end note
+
+  note right of Receipt
+    Funds accounting:
+    potentially_subable()
+  end note
+}
+
+package "konduit-tx" as TxPackage {
+  component "Channel\nStep, Stepped" as TxChannel
+  component "Utxo\nUtxos" as Utxo
+  component "Open\nAdaptor" as TxTypes
+}
+
+package "BLN Client" {
+  component "BLN Client\n(bln-client)" as BLN
+  component "LND API" as LND
+  component "Invoice\nQuote\nPay" as BLNTx
+
+  note right of BLN
+    Bitcoin Lightning Network
+    client for routing payments
+  end note
+}
+
+package "Cardano Adapter" {
+  component "CardanoConnector\nTrait" as CaCoTrait
+  component "Blockfrost\nImplementation" as Blockfrost
+  component "Connector\nServer" as CaCoServer
+
+  note right of CaCoTrait
+    <b>L1 Interaction</b>
+    • utxos_at() - query UTxOs
+    • submit() - submit transactions
+    • protocol_parameters()
+  end note
+}
+
+package "API Layer" {
+  component "Handlers" as Handlers
+  component "Middleware" as Middleware
+  component "Models" as Models
+  component "konduit-client" as Client
+}
+
+package "L1 Kernel" {
+  component "Aiken Validators" as Kernel
+  component "On-chain\nPlutus Code" as Plutus
+
+  note right of Kernel
+    <b>Incubating</b>
+    On-chain channel logic
+  end note
+}
+
+cloud "Cardano L1" as L1
+cloud "External FX" as FXExt
+cloud "Bitcoin Lightning\nNetwork" as BLNLN
+
+Server --> Handlers : routes
+Server --> Middleware : extracts Keytag
+Server --> FX : queries rates
+
+Handlers --> Channel : uses
+Handlers --> Db : persists
+Handlers --> BLN : quotes / pays
+
+Channel --> State : reads / writes
+Channel --> Tx : uses
+Channel --> Blockfrost : uses
+Channel --> FX : converts
+
+Tx --> Blockfrost : uses
+Tx --> Utxo : manages
+
+Admin --> State : syncs / inspects
+Admin --> Blockfrost : queries tip
+Admin --> Db : syncs
+
+State --> L1Channel
+State --> Receipt
+State --> Squash
+State --> Locked
+
+Db --> Models : stores
+
+BLN --> LND : calls
+BLN --> BLNTx : creates
+
+Blockfrost ..> L1 : reads (tip / indexer / UTxOs)
+Blockfrost --> L1 : submits txs
+
+FXExt --> FX : fetches rates
+BLN <-- BLNTx : routes payment
+
+Kernel ..> L1 : validates scripts
+Plutus ..> L1 : on-chain
+
+Client --> Server : HTTP API
+
+@enduml
