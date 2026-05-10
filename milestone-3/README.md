@@ -23,16 +23,24 @@ Coding extras (for the future?):
 
 - [ ] Spec of L2 System architecture. Including:
 
-  - [ ] Component mapping diagram (draft by ~paluh~ AI, polish by waalge).
+  - [~] Component mapping diagram:
+
+    - @paluh: Add CLN component + clean up pass.
+
   - [ ] An explanation of each component, what id does, for whom and how it
         relates to the other components.
-  - [ ] @waalge: API specs in an appropriate form eg Protobuf and/or OpenApi
-  - [ ] Distinction between core and auxiliary aspects of spec.
-  - [ ] Flagging any aspect (such as the establishing of specific constant
-        values) that will need to be established empirically. For example, how
-        long to hold channels open.
-  - [ ] Explicit descriptions of the requirements of interactions with L1 in
-        terms of read/ store (ie chain indexer) and write ie submit txs.
+
+  - [~] @waalge: Distinction between core and auxiliary aspects of spec <-
+    Versioning/features document
+
+  - [~] @waalge: API specs in an appropriate form eg Protobuf and/or OpenApi
+
+  - [ ] @waalge (article?): _Flagging_ any aspect (such as the establishing of
+        specific constant values) that will need to be established empirically.
+        For example, how long to hold channels open.
+
+  - [ ] @paluh: Explicit descriptions of the requirements of interactions with
+        L1 in terms of read/store (ie chain indexer) and write ie submit txs.
 
 - [ ] Architectural Decision Records will record why some options were deemed
       _not_ suitable (and why we choose others instead). It is our aspiration
@@ -40,10 +48,14 @@ Coding extras (for the future?):
       will be able to develop implementations and integrations of the protocol
       without awaiting and consulting our own implementation.
 
-- [ ] @paluh: Blog post: Exposition on possible different user behaviour with
-      respect to the protocol. For example: A user that only spends and has low
-      resources vs a gateway aiming for high bidirectional throughput. This will
-      act as an intro/signposting article to the spec.
+      - [ ] @paluh: Add an ADR which proposes a CL componet addition which should
+        take into account two flavors of that component:
+          - one which will be used to communicate with the other server
+
+- [~] @paluh: Blog post: Exposition on possible different user behaviour with
+  respect to the protocol. For example: A user that only spends and has low
+  resources vs a gateway aiming for high bidirectional throughput. This will act
+  as an intro/signposting article to the spec.
 
 In reality, it is unrealistic to believe we will do this adequately first time,
 in one go, without also beginning an implementation. The spec will be maintained
