@@ -1,0 +1,72 @@
+@startuml
+skinparam componentStyle uml2
+skinparam shadowing false
+skinparam nodesep 6
+skinparam ranksep 10
+
+<style>
+component {
+    HorizontalAlignment center   /* works in many cases */
+}
+arrow {
+    LineColor gray
+    LineThickness 1
+}
+
+</style>
+
+component Kernel <<smart-contract>> [
+  <b>Kernel in Aiken</b>
+]
+
+package "Cardano" as CardanoConnector {
+  interface "<b>Cardano Connector</b>" as CardanoConnectorAPI <<api>>
+
+  component "<b>Blockfrost</b>" as BlockfrostAdapter <<adapter>>
+  component "<b>UTxO RPC</b>" as UTxORPCAdapter <<adapter>>
+  component "<b>Kupo</b>" as KupoAdapter <<adapter>>
+
+  BlockfrostAdapter -up-..|> CardanoConnectorAPI
+  UTxORPCAdapter -up-..|> CardanoConnectorAPI
+  KupoAdapter -up-..|> CardanoConnectorAPI
+
+  component CardanoSDK <<library>> [
+    <b>Cardano SDK</b>
+  ]
+
+}
+
+package Protocol as Protocol {
+  component ProblemDetails <<library>> [
+    <b>"Problem Details"</b>
+    <i>RFC 9457 based HTTP error reporting</i>
+  ]
+
+  component Cobbl3 <<library>> [
+    <b>"Cobbl3"</b>
+    <i>A very simple HMAC-BLAKE3 auth protocol.</i>
+  ]
+
+  component Powdos <<library>> [
+    <b>"Powdos"</b>
+    <i>Crypto-agnostic proof-of-work challenge — issue, solve, verify.</i>
+  ]
+
+}
+
+package "BLN" as BLN {
+  interface "<b>BLN Connector</b>" as BLNConnectorAPI <<api>>
+  component "<b>LND Client</b>" as LndAdapter <<adapter>>
+  LndAdapter -up-..|> BLNConnectorAPI
+
+  component "<b>BLN SDK</b>" <<library>>
+}
+
+package "<b>FX</b>" as FX {
+  interface "<b>Query</b>" as FXAPI <<api>>
+  component "<b>Kraken</b>" as Kraken <<adapter>>
+  Kraken -up-..|> FXAPI
+}
+
+
+@enduml

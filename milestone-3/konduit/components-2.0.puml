@@ -29,11 +29,13 @@ package "Konduit L2 Server" {
     • Channel CRUD operations
   end note
 
+/'
   note right of FX
-    <b>External FX</b>
-    • Binance, Kraken, CoinGecko
-    • msat ↔ lovelace conversion
+   <b>External FX</b>
+   • Binance, Kraken, CoinGecko
+   • msat ↔ lovelace conversion
   end note
+'/
 }
 
 package "konduit-data" as DataPackage {
@@ -94,7 +96,6 @@ package "API Layer" {
 
 package "L1 Kernel" {
   component "Aiken Validators" as Kernel
-  component "On-chain\nPlutus Code" as Plutus
 
   note right of Kernel
     <b>Incubating</b>
@@ -103,7 +104,9 @@ package "L1 Kernel" {
 }
 
 cloud "Cardano L1" as L1
+/'
 cloud "External FX" as FXExt
+'/
 cloud "Bitcoin Lightning\nNetwork" as BLNLN
 
 Server --> Handlers : routes
@@ -139,7 +142,10 @@ BLN --> BLNTx : creates
 Blockfrost ..> L1 : reads (tip / indexer / UTxOs)
 Blockfrost --> L1 : submits txs
 
+/'
 FXExt --> FX : fetches rates
+'/
+
 BLN <-- BLNTx : routes payment
 
 Kernel ..> L1 : validates scripts
