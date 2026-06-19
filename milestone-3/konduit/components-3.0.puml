@@ -1,8 +1,9 @@
 @startuml
 skinparam componentStyle uml2
 skinparam shadowing false
-skinparam nodesep 6
-skinparam ranksep 5
+skinparam nodesep 20
+skinparam ranksep 10
+
 
 <style>
 component {
@@ -15,8 +16,8 @@ arrow {
 
 </style>
 
-package "Gateway Node Core" as CLNode {
-    database Sled as DB {
+package "Gateway Node" as CLNode {
+    database DB as DB {
       component ChannelInfo <<record>> [
         <b>Channel
       ]
@@ -25,7 +26,7 @@ package "Gateway Node Core" as CLNode {
     component Server <<service>> [
         <b>Server
     ]
-    Server -d--> DB: use
+    Server -d--> DB
 
     interface "<b>HTTP" as HTTP
     component Client <<library>> [
@@ -37,9 +38,9 @@ package "Gateway Node Core" as CLNode {
     component WASM <<library>> [
       <b> WASM Client
     ]
-    CLI -u--> Client: use
-    WASM -u---> Client: use
-    Client -u-->HTTP: use
+    CLI -u--> Client
+    WASM -u---> Client
+    Client -u-->HTTP
     Server -d- HTTP
 
     component Kernel <<smart-contract>> [
@@ -52,7 +53,7 @@ package "Gateway Node Core" as CLNode {
         <b>Tx Builder
     ]
 
-    TxBuilder -u--> PlutusBinaries: use
+    TxBuilder -u--> PlutusBinaries
 
     component CLData <<library>> [
       <b>CL Data
@@ -62,7 +63,7 @@ package "Gateway Node Core" as CLNode {
 
     Codecs -u- CLData
 
-    TxBuilder -u--> Codecs: use
+    TxBuilder -u--> Codecs
 
     component Admin <<service>> [
       <b>Admin
@@ -71,81 +72,86 @@ package "Gateway Node Core" as CLNode {
       <i>L1 liquidity management
     ]
 
-    Admin -u--> TxBuilder: use
+    Admin -u--> TxBuilder
 
-    Admin -u--> DB: use
+    Admin -u--> DB
+}
+
+package Protocols as Protocols {
+  component ProblemDetails <<library>> [
+    <b>"Problem Details"
+
+    <i>RFC 9457 based
+    <i>HTTP error reporting.
+  ]
+
+  component Cobbl3 <<library>> [
+    <b>"Cobbl3"
+
+    <i>A very simple HMAC-BLAKE3
+    <i>auth protocol.
+  ]
+
+  component Powdos <<library>> [
+    <b>"Powdos"
+
+    <i>Crypto-agnostic proof-of-work challenge.
+    <i>Issue, solve, verify.
+  ]
+
+}
+
+package "<b>FX</b>" as FX {
+  interface "<b>Query</b>" as FXAPI <<api>>
+  component "<b>Kraken</b>" as Kraken <<adapter>>
+  Kraken -l-..|> FXAPI: implements
 }
 
 
-  package Protocols as Protocols {
-    component ProblemDetails <<library>> [
-      <b>"Problem Details"
-
-      <i>RFC 9457 based
-      <i>HTTP error reporting.
-    ]
-
-    component Cobbl3 <<library>> [
-      <b>"Cobbl3"
-
-      <i>A very simple HMAC-BLAKE3
-      <i>auth protocol.
-    ]
-
-    component Powdos <<library>> [
-      <b>"Powdos"
-
-      <i>Crypto-agnostic proof-of-work challenge.
-      <i>Issue, solve, verify.
-    ]
-
-  }
-
-  package "<b>FX</b>" as FX {
-    interface "<b>Query</b>" as FXAPI <<api>>
-    component "<b>Kraken</b>" as Kraken <<adapter>>
-    Kraken -u-..|> FXAPI: implements
-  }
-
-  package Cardano as Cardano {
-    interface "<b>Cardano Connector</b>" as CardanoConnector <<api>>
-
-    component "<b>Blockfrost" as BlockfrostAdapter <<adapter>>
-    component "<b>UTxO RPC" as UTxORPCAdapter <<adapter>>
-    component "<b>Kupo" as KupoAdapter <<adapter>>
-
-    BlockfrostAdapter -u-..|> CardanoConnector: implements
-    UTxORPCAdapter -u-..|> CardanoConnector: implements
-    KupoAdapter -u-..|> CardanoConnector: implements
-
-    component CardanoSDK <<library>> [
-      <b>Cardano SDK</b>
-    ]
-
-    component TxSubmission <<service>> [
-      <b>Tx Submission
-
-      <i>With retries
-      <i>& status tracking.
-    ]
-  }
-
   package "BLN" as BLN {
+    component "<b>BLN SDK</b>" as BLNSDK <<library>>
+
     interface "<b>BLN Connector</b>" as BLNConnector <<api>>
     component "<b>LND Client</b>" as LndAdapter <<adapter>>
     LndAdapter -u-..|> BLNConnector: implements
 
-    component "<b>BLN SDK</b>" <<library>>
   }
 
+package Cardano as Cardano {
+  interface "<b>Cardano Connector</b>" as CardanoConnector <<api>>
 
-CLData -d--> CardanoSDK: use
-'TxBuilder -d--> CardanoSDK: use
-Admin -d--> CardanoConnector: use
-Admin -d--> TxSubmission: use
-Admin -d--> BLNConnector: use
+  component "<b>Blockfrost" as BlockfrostAdapter <<adapter>>
+  component "<b>UTxO RPC" as UTxORPCAdapter <<adapter>>
+  component "<b>Kupo" as KupoAdapter <<adapter>>
 
-Server -d--> Protocols: use
-Server -d--> FXAPI: use
+  BlockfrostAdapter -u-..|> CardanoConnector: implements
+  UTxORPCAdapter -u-..|> CardanoConnector: implements
+  KupoAdapter -u-..|> CardanoConnector: implements
+
+  component CardanoSDK <<library>> [
+    <b>Cardano SDK</b>
+  ]
+
+  component TxSubmission <<service>> [
+    <b>Tx Submission
+
+    <i>With retries
+    <i>& status tracking.
+  ]
+}
+
+
+'CLData -d--> CardanoSDK
+'TxBuilder -d--> CardanoSDK
+Admin -d--> CardanoConnector
+Admin -d--> TxSubmission
+
+Admin -d--> BLNConnector
+Admin -d--> BLNSDK
+
+Server -d--> ProblemDetails
+Server -d--> Cobbl3
+Server -d--> Powdos
+Server -d--> FXAPI
 
 @enduml

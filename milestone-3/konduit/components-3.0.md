@@ -6,21 +6,12 @@ implemented in the form of reusable libraries. We group them here under the
 
 - Cardano
 
-  - Kernel
-
-    - Implements the CL validators.
-    - Provides property tests.
-    - Defines the surface interface specification in a form of blueprints.
-    - Implementations:
-      - [unidirectional](https://github.com/cardano-lightning/konduit/tree/main/packages/kernel)
-      - [bidirectional](https://github.com/cardano-lightning/cardano-lightning/tree/main/aik/)
-
   - SDK
 
     - Provides an ergonomic interface for handling cardano data.
     - Implements generic Cardano transaction builder.
     - Implementation:
-      - [cardano-sdk](https://github.com/cardano-lightning/konduit/tree/main/packages/cardano/sdk)
+      [cardano-sdk](https://github.com/cardano-lightning/konduit/tree/main/packages/cardano/sdk)
 
   - Connector
     - Exposes an API sufficient to reconstruct the L1 state of the CL channel.
@@ -52,14 +43,21 @@ implemented in the form of reusable libraries. We group them here under the
     - Provides error reporting protocol based on
       [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457).
     - Implementation:
-      - [problem-details](https://github.com/cardano-lightning/konduit/tree/main/packages/util/problem-details)
+      [problem-details](https://github.com/cardano-lightning/konduit/tree/main/packages/util/problem-details)
 
   - "Powdos" protocol
+
     - Specifies a crypto and communication layer agnostic proof-of-work
       challenge protocol for the purpose of mitigating DoS attacks on the CL
       nodes.
     - Implementation:
-      - [powdos](https://github.com/cardano-lightning/konduit/tree/main/packages/util/powdos)
+      [powdos](https://github.com/cardano-lightning/konduit/tree/main/packages/util/powdos)
+
+  - Cobbl3 protocol
+    - Specifies a simple HMAC-BLAKE3 auth protocol which minimizes the resource
+      usage needed to verify the auth token.
+    - Implementation:
+      [cobbl3](https://github.com/cardano-lightning/konduit/tree/main/packages/util/cobbl3)
 
 - BLN
 
@@ -70,11 +68,59 @@ implemented in the form of reusable libraries. We group them here under the
     - Specifies an API for the the interaction with the BLN network through LND
       Node API.
     - Implementation:
-      - [lnd-client](https://github.com/cardano-lightning/konduit/tree/main/packages/bln/client)
+      [lnd-client](https://github.com/cardano-lightning/konduit/tree/main/packages/bln/client)
 
   - SDK
     - Implements handling of BLN invoices.
     - Implementation:
-      - [bln-sdk](https://github.com/cardano-lightning/konduit/tree/main/packages/bln/sdk/src)
+      [bln-sdk](https://github.com/cardano-lightning/konduit/tree/main/packages/bln/sdk/src)
+
+- FX Client
+  - Foreign exchange client to be used by the BLN-CL edge node.
+  - Currently implements [Kraken](https://www.kraken.com/) API client.
+  - Implementation:
+    [fx-client](https://github.com/cardano-lightning/konduit/tree/main/packages/util/fx-client/src)
 
 ## Gateway Node Core
+
+- Kernel
+
+  - Implements the CL validators.
+  - Provides property tests.
+  - Defines the surface interface specification in a form of blueprints.
+  - Implementations:
+    - [unidirectional](https://github.com/cardano-lightning/konduit/tree/main/packages/kernel)
+    - [bidirectional](https://github.com/cardano-lightning/cardano-lightning/tree/main/aik/)
+
+- CL Data
+
+  - Implements the CL data structures and serialization needed for L1 and L2
+    cash flow representation and signing.
+  - Implementation:
+    [cl-data](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/data/src)
+
+- Tx Builder
+
+  - Provides the CL specific transaction builder.
+  - Implementation:
+    [tx](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/tx/src)
+
+- Admin
+
+  - Service which is responsible for L1 interactions.
+  - Monitors the blockchain for new opens, adds and closes.
+  - Automatically constructs and submits the L1 transactions based on liquidity
+    management policies.
+  - Implementation:
+    [admin](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/server/src/admin)
+
+- HTTP Server
+
+  - Implements the API server for the Gateway Node.
+  - Implementation:
+    [server](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/server/src/server)
+
+- DB
+  - Stores the L1 and L2 state of the Channels.
+  - Implementation:
+    [db](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/server/src/db)
