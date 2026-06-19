@@ -22,14 +22,14 @@ implemented in the form of reusable libraries. We group them here under the
         a tiny HTTP custom server implementation which currently proxies
         blockfrost under the hood. It is useful when we want to query the
         Cardano from the client app without exposing the API key to the client.
-      - [connector-client](https://github.com/cardano-lightning/konduit/tree/main/packages/cardano/connector-client/src) -
+      - [connector-client](https://github.com/cardano-lightning/konduit/tree/main/packages/cardano/connector-client) -
         the connector interface implementation as a client for the above
         connector-server. Used through WASM on the client side in the one of the
         [Ferret payment app](https://ferret.channel/) by @KtorZ.
-      - [connector-direct](https://github.com/cardano-lightning/konduit/tree/main/packages/cardano/connector-direct/src) -
+      - [connector-direct](https://github.com/cardano-lightning/konduit/tree/main/packages/cardano/connector-direct) -
         the connector interface implementation as a direct client for the
         blockfrost API.
-      - [connector-utxorpc](https://github.com/cardano-lightning/konduit/tree/main/packages/cardano/connector-utxorpc/src) -
+      - [connector-utxorpc](https://github.com/cardano-lightning/konduit/tree/main/packages/cardano/connector-utxorpc) -
         the connector interface implementation as a direct client for the
         utxorpc API.
     - Planned:
@@ -73,13 +73,13 @@ implemented in the form of reusable libraries. We group them here under the
   - SDK
     - Implements handling of BLN invoices.
     - Implementation:
-      [bln-sdk](https://github.com/cardano-lightning/konduit/tree/main/packages/bln/sdk/src)
+      [bln-sdk](https://github.com/cardano-lightning/konduit/tree/main/packages/bln/sdk)
 
 - FX Client
   - Foreign exchange client to be used by the BLN-CL edge node.
   - Currently implements [Kraken](https://www.kraken.com/) API client.
   - Implementation:
-    [fx-client](https://github.com/cardano-lightning/konduit/tree/main/packages/util/fx-client/src)
+    [fx-client](https://github.com/cardano-lightning/konduit/tree/main/packages/util/fx-client)
 
 ## Gateway Node Core
 
@@ -97,13 +97,13 @@ implemented in the form of reusable libraries. We group them here under the
   - Implements the CL data structures and serialization needed for L1 and L2
     cash flow representation and signing.
   - Implementation:
-    [cl-data](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/data/src)
+    [cl-data](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/data)
 
 - Tx Builder
 
   - Provides the CL specific transaction builder.
   - Implementation:
-    [tx](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/tx/src)
+    [tx](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/tx)
 
 - Admin
 
@@ -124,3 +124,37 @@ implemented in the form of reusable libraries. We group them here under the
   - Stores the L1 and L2 state of the Channels.
   - Implementation:
     [db](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/server/src/db)
+
+## Gateway Node Client
+
+- Client library
+
+  - Implements the client library for the Gateway Node API.
+  - Implementation:
+    [client](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/client)
+
+- CLI
+
+  - Implements the command line interface for the Gateway Node API. Uses the
+    client library under the hood.
+  - Implementation:
+    [cli](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/cli)
+
+- WASM
+  - Implements the WASM build of the client library for the Gateway Node API.in
+  - Adapted for the browser and backend usage - uses abstraction layer for the
+    HTTP requests.
+  - Implementations:
+    - [http-client](https://github.com/cardano-lightning/konduit/tree/main/packages/util/http-client) -
+      HTTP client abstraction layer for the WASM build of the client library.
+    - [http-client-wasm](https://github.com/cardano-lightning/konduit/tree/main/packages/util/http-client-wasm) -
+      HTTP client implementation for the WASM build of the client library.
+    - [http-client-native](https://github.com/cardano-lightning/konduit/tree/main/packages/util/http-client-native) -
+      HTTP client implementation for the native build of the client library.
+    - [wasm](https://github.com/cardano-lightning/konduit/tree/main/packages/konduit/wasm) -
+      WASM build of the client library for the Gateway Node API.
+  - Usage:
+    - [Ferret payment app](https://ferret.channel/) by @KtorZ uses the WASM
+      build of the client library for the Gateway Node API.
+    - [Konduit payment app](https://app.konduit.channel/) by our team uses some
+      parts of the WASM library as well.

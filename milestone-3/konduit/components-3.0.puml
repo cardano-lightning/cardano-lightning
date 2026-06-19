@@ -4,7 +4,6 @@ skinparam shadowing false
 skinparam nodesep 20
 skinparam ranksep 10
 
-
 <style>
 component {
     HorizontalAlignment center   /* works in many cases */
@@ -17,26 +16,42 @@ arrow {
 </style>
 
 package "Gateway Node" as CLNode {
-    database DB as DB {
+    database DB {
       component ChannelInfo <<record>> [
         <b>Channel
+
+        <i>Stores the L1 and L2
+        <i>state of the Channels.
       ]
     }
 
     component Server <<service>> [
         <b>Server
+
+        <i>Exposes an API for L2 interactions:
+        <i>payment routing, quoting and processing
     ]
     Server -d--> DB
 
     interface "<b>HTTP" as HTTP
     component Client <<library>> [
       <b>Client
+
+      <i>Gateway Node API client.
     ]
+
     component CLI <<application>> [
-      <b>CLI Client
+      <b>CLI
+
+      <i>Command line tool
+      <i>for the Node API.
     ]
+
     component WASM <<library>> [
-      <b> WASM Client
+      <b>WASM Client
+
+      <i>Node API client
+      <i>for JS through WASM.
     ]
     CLI -u--> Client
     WASM -u---> Client
@@ -45,18 +60,28 @@ package "Gateway Node" as CLNode {
 
     component Kernel <<smart-contract>> [
       <b>Kernel in Aiken
+
+      <i>Implements CL validators.
+      <i>Specifies smart contract surface API.
     ]
     interface "<b>Plutus Binaries" as PlutusBinaries
     PlutusBinaries -u- Kernel
 
     component TxBuilder <<library>> [
         <b>Tx Builder
+
+        <i>Provides the CL specific
+        <i>transaction builder.
     ]
 
     TxBuilder -u--> PlutusBinaries
 
     component CLData <<library>> [
       <b>CL Data
+
+      <i>Implements data structures
+      <i>needed for L1 cash flows and L2
+      <i>settlement.
     ]
 
     interface "<b>Codecs" as Codecs
@@ -109,7 +134,11 @@ package "<b>FX</b>" as FX {
 
 
   package "BLN" as BLN {
-    component "<b>BLN SDK</b>" as BLNSDK <<library>>
+    component BLNSDK <<library>> [
+      <b>BLN SDK
+
+      <i>Handling of BLN invoices.
+    ]
 
     interface "<b>BLN Connector</b>" as BLNConnector <<api>>
     component "<b>LND Client</b>" as LndAdapter <<adapter>>
