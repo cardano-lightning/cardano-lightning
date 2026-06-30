@@ -1,0 +1,186 @@
+@startuml
+skinparam componentStyle uml2
+skinparam shadowing false
+skinparam nodesep 20
+skinparam ranksep 10
+
+<style>
+component {
+    HorizontalAlignment center   /* works in many cases */
+}
+arrow {
+    LineColor gray
+    LineThickness 1
+}
+
+</style>
+
+package "Gateway Node" as CLNode {
+    database DB {
+      component ChannelInfo <<record>> [
+        <b>Channel
+
+        <i>Stores the L1 and L2
+        <i>state of the Channels.
+      ]
+    }
+
+    component Server <<service>> [
+        <b>Server
+
+        <i>Exposes an API for L2 interactions:
+        <i>payment routing, quoting and processing
+    ]
+    Server -d--> DB
+
+    interface "<b>HTTP" as HTTP
+    component Client <<library>> [
+      <b>Client
+
+      <i>Gateway Node API client.
+    ]
+
+    component CLI <<application>> [
+      <b>CLI
+
+      <i>Command line tool
+      <i>for the Node API.
+    ]
+
+    component WASM <<library>> [
+      <b>WASM Client
+
+      <i>Node API client
+      <i>for JS through WASM.
+    ]
+    CLI -u--> Client
+    WASM -u---> Client
+    Client -u-->HTTP
+    Server -d- HTTP
+
+    component Kernel <<smart-contract>> [
+      <b>Kernel in Aiken
+
+      <i>Implements CL validators.
+      <i>Specifies smart contract surface API.
+    ]
+    interface "<b>Plutus Binaries" as PlutusBinaries
+    PlutusBinaries -u- Kernel
+
+    component TxBuilder <<library>> [
+        <b>Tx Builder
+
+        <i>Provides the CL specific
+        <i>transaction builder.
+    ]
+
+    TxBuilder -u--> PlutusBinaries
+
+    component CLData <<library>> [
+      <b>CL Data
+
+      <i>Implements data structures
+      <i>needed for L1 cash flows and L2
+      <i>settlement.
+    ]
+
+    interface "<b>Codecs" as Codecs
+
+    Codecs -u- CLData
+
+    TxBuilder -u--> Codecs
+
+    component Admin <<service>> [
+      <b>Admin
+
+      <i>L1 monitoring
+      <i>L1 liquidity management
+    ]
+
+    Admin -u--> TxBuilder
+
+    Admin -u--> DB
+}
+
+package Protocols as Protocols {
+  component ProblemDetails <<library>> [
+    <b>"Problem Details"
+
+    <i>RFC 9457 based
+    <i>HTTP error reporting.
+  ]
+
+  component Cobbl3 <<library>> [
+    <b>"Cobbl3"
+
+    <i>A very simple HMAC-BLAKE3
+    <i>auth protocol.
+  ]
+
+  component Powdos <<library>> [
+    <b>"Powdos"
+
+    <i>Crypto-agnostic proof-of-work challenge.
+    <i>Issue, solve, verify.
+  ]
+
+}
+
+package "<b>FX</b>" as FX {
+  interface "<b>Query</b>" as FXAPI <<api>>
+  component "<b>Kraken</b>" as Kraken <<adapter>>
+  Kraken -l-..|> FXAPI: implements
+}
+
+
+  package "BLN" as BLN {
+    component BLNSDK <<library>> [
+      <b>BLN SDK
+
+      <i>Handling of BLN invoices.
+    ]
+
+    interface "<b>BLN Connector</b>" as BLNConnector <<api>>
+    component "<b>LND Client</b>" as LndAdapter <<adapter>>
+    LndAdapter -u-..|> BLNConnector: implements
+
+  }
+
+package Cardano as Cardano {
+  interface "<b>Cardano Connector</b>" as CardanoConnector <<api>>
+
+  component "<b>Blockfrost" as BlockfrostAdapter <<adapter>>
+  component "<b>UTxO RPC" as UTxORPCAdapter <<adapter>>
+  component "<b>Kupo" as KupoAdapter <<adapter>>
+
+  BlockfrostAdapter -u-..|> CardanoConnector: implements
+  UTxORPCAdapter -u-..|> CardanoConnector: implements
+  KupoAdapter -u-..|> CardanoConnector: implements
+
+  component CardanoSDK <<library>> [
+    <b>Cardano SDK</b>
+  ]
+
+  component TxSubmission <<service>> [
+    <b>Tx Submission
+
+    <i>With retries
+    <i>& status tracking.
+  ]
+}
+
+
+'CLData -d--> CardanoSDK
+'TxBuilder -d--> CardanoSDK
+Admin -d--> CardanoConnector
+Admin -d--> TxSubmission
+
+Admin -d--> BLNConnector
+Admin -d--> BLNSDK
+
+Server -d--> ProblemDetails
+Server -d--> Cobbl3
+Server -d--> Powdos
+Server -d--> FXAPI
+
+@enduml
